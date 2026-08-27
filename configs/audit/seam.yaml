@@ -1,0 +1,8 @@
+experiment: seam_robustness
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/robustness/seam
+audit:
+  source_buffers: [0, 4, 8, 16]
+  boundary_modes: [hard, feathered]
+  feather_widths: [0, 2, 4, 8]
+  reuse_locked_triplets: true

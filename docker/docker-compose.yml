@@ -1,0 +1,20 @@
+services:
+  medstyleaudit:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    working_dir: /workspace/MedStyleAudit
+    environment:
+      MEDSTYLE_DATA_ROOT: /workspace/datasets
+      MEDSTYLE_OUTPUT_ROOT: /workspace/experiments/medstyleaudit
+      HF_HOME: /workspace/experiments/medstyleaudit/cache/huggingface
+    volumes:
+      - ${MEDSTYLE_DATA_ROOT:?set MEDSTYLE_DATA_ROOT to the persistent server dataset directory}:/workspace/datasets:ro
+      - ${MEDSTYLE_OUTPUT_ROOT:?set MEDSTYLE_OUTPUT_ROOT to the persistent server experiment directory}:/workspace/experiments/medstyleaudit:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

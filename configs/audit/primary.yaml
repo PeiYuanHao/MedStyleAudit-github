@@ -1,0 +1,16 @@
+experiment: primary_audit
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/primary_audit
+data:
+  triplets: ${MEDSTYLE_OUTPUT_ROOT}/matching/triplets/triplets.csv
+  id_validation_logits: ${MEDSTYLE_OUTPUT_ROOT}/checkpoints/resnet50/seed_0042/id_validation_predictions.csv
+audit:
+  split: val
+  roi_size: 32
+  patch_size: 96
+  source_buffer: 0
+  feather_width: 4
+  q_min: 0.001
+  bootstrap_draws: 2000
+  confidence: 0.95
+  pair_weights: equal

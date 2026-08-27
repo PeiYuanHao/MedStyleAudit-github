@@ -1,0 +1,7 @@
+experiment: roi_only_control
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/controls/roi_only
+control:
+  roi_size: 32
+  fill_value: 0.0
+  expected_hcs_tolerance: 1.0e-8

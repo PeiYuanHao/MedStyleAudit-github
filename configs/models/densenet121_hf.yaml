@@ -1,0 +1,7 @@
+extends: densenet121.yaml
+experiment: train_erm_densenet121_hf
+data:
+  backend: huggingface_parquet
+  root: ${MEDSTYLE_DATA_ROOT}/huggingface/Camelyon17-WILDS
+  version: hf-d784d53
+  download: false

@@ -1,0 +1,26 @@
+experiment: train_erm_resnet50
+seed: 42
+seeds: [11, 23, 42, 57, 71, 89, 101, 131, 173, 211]
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/checkpoints/resnet50
+data:
+  root: ${MEDSTYLE_DATA_ROOT}/wilds
+  version: camelyon17_v1.0
+  download: false
+model:
+  architecture: resnet50
+  pretrained: false
+  input_mean: [0.5, 0.5, 0.5]
+  input_std: [0.5, 0.5, 0.5]
+training:
+  epochs: 20
+  batch_size: 128
+  num_workers: 4
+  optimizer: adamw
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  scheduler: cosine
+  selection_metric: val_auroc
+  maximize_metric: true
+  resume: null
+  save_predictions: true
+  dry_run_batches: 2

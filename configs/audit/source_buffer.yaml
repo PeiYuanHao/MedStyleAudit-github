@@ -1,0 +1,7 @@
+experiment: source_buffer_robustness
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/robustness/source_buffer
+audit:
+  source_buffers: [0, 4, 8, 16]
+  feather_width: 4
+  reuse_locked_triplets: true

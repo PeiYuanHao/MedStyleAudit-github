@@ -1,0 +1,7 @@
+experiment: lesion_aware_matching
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/matching/lesion_aware
+extends: primary.yaml
+matching:
+  require_validated_lesion_mapping: true
+  lesion_columns: [peripheral_tumor_presence, peripheral_tumor_fraction, peripheral_tumor_distance, peripheral_largest_component]

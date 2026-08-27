@@ -1,0 +1,25 @@
+experiment: balanced_matching
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/matching
+data:
+  descriptors: ${MEDSTYLE_OUTPUT_ROOT}/descriptors/descriptors.csv
+matching:
+  method: balanced_triplets
+  donors_per_source: 3
+  descriptor_columns: [tissue_fraction, component_count, area_mean, area_std, area_max, normalized_perimeter, compactness, eccentricity, centroid_x, centroid_y, grid_0, grid_1, grid_2, grid_3, grid_4, grid_5, grid_6, grid_7, grid_8, empty_mask]
+  exact_columns: [label]
+  physical_id_column: physical_id
+  lambda_balance: 2.0
+  lambda_pair: 0.25
+  tau_distance: 6.0
+  tau_balance: 1.0
+  feature_calipers: {}
+  donor_reuse_cap: 20
+  donor_slide_reuse_cap: 100
+  candidate_pool_size: 64
+  min_donor_slide_diversity: 1
+  target_hospitals:
+    train: [0, 3, 4]
+    id_val: [0, 3, 4]
+    val: [0, 3, 4]
+    test: [0, 3, 4]

@@ -1,0 +1,8 @@
+experiment: context_randomized_control
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/controls/context_randomized
+control:
+  assignment: fixed_joint_cell_quotas
+  donor_reuse_cap: 20
+  exclude_same_physical_id: true
+  epochs: 20

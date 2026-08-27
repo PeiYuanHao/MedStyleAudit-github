@@ -1,0 +1,27 @@
+experiment: data_integrity
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/data_integrity
+data:
+  name: camelyon17
+  backend: wilds
+  version: camelyon17_v1.0
+  wilds_package_version: "2.0"
+  root: ${MEDSTYLE_DATA_ROOT}/wilds
+  camelyon17_wsi_root: ${MEDSTYLE_DATA_ROOT}/camelyon17
+  metadata_csv: null
+  slide_manifest_csv: null
+  download: false
+  expected_patches: 455954
+  expected_slides: 50
+  dry_run_samples: 128
+  split_hospitals:
+    train: [0, 3, 4]
+    id_val: [0, 3, 4]
+    val: [1]
+    test: [2]
+mask:
+  median_size: 3
+  saturation_min: 0.05
+  value_max: 0.95
+  min_object_size: 8
+  closing_radius: 1

@@ -1,0 +1,6 @@
+experiment: appearance_matched_attenuation
+seed: 42
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/matching/appearance_matched
+extends: primary.yaml
+matching:
+  appearance_columns: [hed_h_mean, hed_e_mean, color_histogram_distance, texture_contrast, texture_homogeneity]
