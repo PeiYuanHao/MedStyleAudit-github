@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from medstyleaudit.matching.candidate_bank import CandidateBank
-from medstyleaudit.matching.ladder import independent_nearest_pairs, random_pairs
+from medstyleaudit.matching.ladder import advanced_level_status, independent_nearest_pairs, random_pairs
 from medstyleaudit.utils.cli import common_parser
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import read_table, save_table
@@ -25,10 +25,10 @@ def main() -> None:
         primary = configured_output(config, "matching") / "triplets" / "triplets.csv"; triplets = read_table(primary); triplets = triplets[triplets["target_hospital"] == args.target_hospital]
     elif args.level in {5, 6}:
         required = settings.get("lesion_columns" if args.level == 5 else "appearance_columns", [])
-        missing = [column for column in required if column not in frame]
-        if missing:
-            save_table(pd.DataFrame([{"level": args.level, "status": "unavailable", "reason": f"missing validated columns: {missing}"}]), output / "status.csv"); run.complete(status="completed", analysis_status="unavailable"); return
-        triplets = pd.DataFrame()
+        status = advanced_level_status(args.level, frame.columns, required)
+        save_table(pd.DataFrame([status]), output / "status.csv")
+        run.complete(status=status["status"], analysis_status=status["status"], reason=status["reason"])
+        return
     else:
         triplets = random_pairs(bank, sources, args.target_hospital, 1, seed)[["source_id", "source_split", "source_hospital", "target_hospital", "label", "cross_donor"]]
     save_table(triplets, output / "triplets.csv"); save_table(pd.DataFrame([{"level": args.level, "candidate_sources": len(sources), "accepted_sources": triplets["source_id"].nunique() if not triplets.empty else 0, "coverage": triplets["source_id"].nunique() / max(len(sources), 1)}]), output / "coverage.csv"); run.complete(status="completed", accepted_rows=len(triplets))

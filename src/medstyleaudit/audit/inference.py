@@ -7,9 +7,17 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
-from medstyleaudit.counterfactual.qa import roi_identity_metrics, seam_metrics
+from medstyleaudit.counterfactual.qa import roi_identity_metrics, seam_metrics, tensor_roi_identity_metrics
 from medstyleaudit.counterfactual.transplant import transplant
 from medstyleaudit.preprocessing.roi import roi_only
+
+
+class ROIIdentityError(AssertionError):
+    """Raised with the QA ledger when image or final-tensor ROI identity fails."""
+
+    def __init__(self, message: str, qa: pd.DataFrame):
+        super().__init__(message)
+        self.qa = qa
 
 
 def infer_triplets(
@@ -38,13 +46,26 @@ def infer_triplets(
             cross = transplant(source, cross_donor, roi_size, source_buffer, feather_width)
             if roi_only_control:
                 source, within, cross = (roi_only(image, roi_size, 0) for image in (source, within, cross))
-            tensors = torch.stack([transform(image) for image in (source, within, cross)]).to(device)
+            image_rows = [
+                {"triplet_id": record.triplet_id, "arm": arm, **roi_identity_metrics(source, composite, roi_size), **seam_metrics(composite, roi_size, source_buffer)}
+                for arm, composite in (("within", within), ("cross", cross))
+            ]
+            if any(not row["roi_equal"] for row in image_rows):
+                qa_rows.extend(image_rows)
+                raise ROIIdentityError(f"Image-level ROI identity failed for triplet {record.triplet_id}", pd.DataFrame(qa_rows))
+            tensors = torch.stack([transform(image) for image in (source, within, cross)])
+            tensor_rows = [
+                tensor_roi_identity_metrics(tensors[0], tensors[index], roi_size)
+                for index in (1, 2)
+            ]
+            for image_row, tensor_row in zip(image_rows, tensor_rows):
+                image_row.update(tensor_row)
+            qa_rows.extend(image_rows)
+            if any(not row["tensor_roi_equal"] for row in tensor_rows):
+                raise ROIIdentityError(f"Final classifier-input tensor ROI identity failed for triplet {record.triplet_id}", pd.DataFrame(qa_rows))
+            tensors = tensors.to(device)
             logits = model(tensors).reshape(-1).detach().cpu().numpy()
             base = {name: getattr(record, name) for name in triplets.columns}
             prediction_rows.append({**base, "original_logit": float(logits[0]), "within_logit": float(logits[1]), "cross_logit": float(logits[2]), "source_buffer": source_buffer, "feather_width": feather_width, "roi_only_control": roi_only_control})
-            qa_rows.append({"triplet_id": record.triplet_id, "arm": "within", **roi_identity_metrics(source, within, roi_size), **seam_metrics(within, roi_size, source_buffer)})
-            qa_rows.append({"triplet_id": record.triplet_id, "arm": "cross", **roi_identity_metrics(source, cross, roi_size), **seam_metrics(cross, roi_size, source_buffer)})
     qa = pd.DataFrame(qa_rows)
-    if not qa.empty and ((qa["max_roi_difference"] != 0).any() or (qa["mean_roi_difference"] != 0).any()):
-        raise AssertionError("Nonzero tensor-level ROI difference detected")
     return pd.DataFrame(prediction_rows), qa

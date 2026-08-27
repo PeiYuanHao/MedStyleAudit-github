@@ -29,8 +29,16 @@ def project_polygons(
     patch_origin_xy: tuple[float, float],
     patch_size: int = 96,
     scale: float = 1.0,
+    orientation: str = "identity",
+    coordinate_reference: str = "top_left",
 ) -> np.ndarray:
     """Rasterize WSI-level polygons into patch coordinates at an explicit scale."""
+    if orientation != "identity":
+        raise ValueError("Only explicitly validated identity WSI orientation is supported")
+    if coordinate_reference != "top_left":
+        raise ValueError("Only explicitly configured top-left patch origins are supported")
+    if scale <= 0:
+        raise ValueError("scale must be positive")
     mask = np.zeros((patch_size, patch_size), dtype=bool)
     origin_x, origin_y = patch_origin_xy
     for coordinates in polygons:

@@ -7,6 +7,7 @@ import pandas as pd
 
 from medstyleaudit.controls.context_randomized import joint_cell_quotas
 from medstyleaudit.controls.permutation import permute_assignments
+from medstyleaudit.controls.status import context_randomized_stages, planted_shortcut_stages
 from medstyleaudit.utils.cli import common_parser
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import read_table, save_table
@@ -25,11 +26,16 @@ def main() -> None:
         donors = read_table(descriptor_table); quotas = joint_cell_quotas(donors[donors["split"] == "train"], min(len(donors), 128) if args.dry_run else len(donors[donors["split"] == "train"]))
         if (quotas["quota"] > quotas["available"] * int(config["control"]["donor_reuse_cap"])).any(): raise RuntimeError("Fixed context-randomized cell quota is infeasible")
         save_table(quotas, output / "assignment_quotas.csv")
+        stages = context_randomized_stages()
     elif experiment == "planted_shortcut_control" and args.assignments:
         table = read_table(args.assignments); table["permuted_cue"] = permute_assignments(table["cue"].to_numpy(), seed, table["hospital_id"].to_numpy() if "hospital_id" in table else None); save_table(table, output / "permuted_assignments.csv")
+        stages = planted_shortcut_stages(True)
+    elif experiment == "planted_shortcut_control":
+        stages = planted_shortcut_stages(False)
     else:
-        pd.DataFrame([{"control": experiment, "status": "configured", "message": "Use this config with training/audit entry points; no empirical result was generated."}]).to_csv(output / "control_status.csv", index=False)
-    run.complete(status="completed", control_status="configured")
+        stages = [{"stage": experiment, "status": "not_implemented", "reason": "this command did not generate an empirical control result"}]
+    save_table(pd.DataFrame(stages), output / "control_status.csv")
+    run.complete(status="partial", control_status="not_implemented", completed_stages=sum(row["status"] in {"completed", "implemented"} for row in stages))
 
 
 if __name__ == "__main__": main()

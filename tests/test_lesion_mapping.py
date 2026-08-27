@@ -15,3 +15,8 @@ def test_alignment_reports_failure_instead_of_fabricating():
     mask = np.zeros((96, 96), bool)
     report = validate_alignment([(mask, 1)])
     assert report["status"] == "failed"
+
+
+def test_alignment_without_mapped_assets_is_unavailable():
+    report = validate_alignment([])
+    assert report == {"status": "unavailable", "reason": "no mapped annotations", "n": 0}

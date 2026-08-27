@@ -20,9 +20,19 @@ def pair_weighted_hcs(directed: pd.DataFrame, expected_pairs: set[tuple[int, int
     rows = []
     for keys, group in directed.groupby(grouping, dropna=False) if grouping else [((), directed)]:
         observed = set(zip(group["source_hospital"].astype(int), group["target_hospital"].astype(int)))
-        available = not expected_pairs or observed == expected_pairs
+        required = expected_pairs or set()
+        missing = sorted(required - observed)
+        unexpected = sorted(observed - required) if expected_pairs is not None else []
+        available = expected_pairs is None or (not missing and not unexpected)
         record = dict(zip(grouping, keys if isinstance(keys, tuple) else (keys,)))
-        record.update({"status": "available" if available else "unavailable", "hcs_pair_weighted": group["hcs"].mean() if available else float("nan"), "n_pairs": len(group), "missing_pairs": sorted((expected_pairs or set()) - observed)})
+        record.update({
+            "status": "available" if available else "unavailable",
+            "hcs_pair_weighted": group["hcs"].mean() if available else float("nan"),
+            "n_pairs": len(observed),
+            "expected_pairs": sorted(required),
+            "missing_pairs": missing,
+            "unexpected_pairs": unexpected,
+        })
         rows.append(record)
     return pd.DataFrame(rows)
 

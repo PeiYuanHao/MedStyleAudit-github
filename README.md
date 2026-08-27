@@ -10,7 +10,26 @@ Sensitivity (HCS; excess absolute normalized-logit instability) and Hospital
 Context Effect (HCE; signed cross-minus-within shift). These are sensitivity
 contrasts, not causal effects of hospital, scanner, stain, or shortcut use.
 
-## Implemented experiment chain
+## Implementation status
+
+Implemented end-to-end:
+
+- metadata integrity, descriptors, balanced matching, coverage, and balance;
+- exact-ROI counterfactual construction and ERM training;
+- primary HCS/HCE, pair completeness checks, robustness, and multi-run aggregation.
+
+Partially implemented:
+
+- lesion mapping (the code path is connected, but results are `unavailable` without exact WSI/XML assets and validated coordinates);
+- context-randomized control (quota preparation only; training/audit are `not_implemented`);
+- planted shortcut (cue utilities only; rho training/audit/calibration are `not_implemented`);
+- identification ladder levels 5/6 (`unavailable` when inputs are absent, otherwise `not_implemented`).
+
+Secondary and not implemented: context-consistency mitigation, GroupDRO, HED
+augmentation, and the complete P2 suite. Placeholder commands report
+`not_implemented`; they do not report successful experiments.
+
+## Implemented primary chain
 
 ```text
 metadata integrity and slide mapping
@@ -21,7 +40,8 @@ metadata integrity and slide mapping
 -> exact-ROI hard/feathered counterfactuals
 -> random-initialized ResNet-50/DenseNet-121 training
 -> frozen-model HCS/HCE audit
--> crossed bootstrap, controls, robustness, OOD summaries
+-> crossed bootstrap, primary robustness, OOD summaries
+-> configured seed/backbone aggregation with a missing-run ledger
 ```
 
 Every executable run creates `run_info.json`, `config_resolved.yaml`, `run.log`,
@@ -94,16 +114,56 @@ Only after the full path passes should all ten configured seeds, the second
 backbone, controls, and robustness grids be launched. Lesion-aware results are
 reported unavailable unless annotation alignment passes the configured check.
 
+After the configured runs finish, aggregate them without silently dropping a
+seed or backbone:
+
+```bash
+python scripts/12_aggregate_experiments.py --split val
+```
+
+## AutoDL 2080 Ti workflow
+
+The supplied AutoDL setup preserves the base image's PyTorch/CUDA installation
+and uses `/root/autodl-tmp` for datasets and experiment outputs:
+
+```bash
+git clone git@github.com:PeiYuanHao/MedStyleAudit-github.git
+cd MedStyleAudit-github
+bash scripts/autodl_setup.sh
+```
+
+Configure non-interactive GitHub authentication (SSH key or a credential helper)
+before starting an unattended job. The wrapper runs the command, exports only
+GitHub-safe CSV/JSON/YAML/log records to `results/<tag>`, commits and pushes them
+to `main`, and invokes `/usr/bin/shutdown` only after a successful push:
+
+```bash
+MEDSTYLE_RESULT_TAG=resnet50-seed42-val \
+bash scripts/autodl_run_export_shutdown.sh \
+  python scripts/06_run_primary_audit.py --config configs/audit/primary.yaml \
+  --model-config configs/models/resnet50_hf.yaml \
+  --checkpoint /root/autodl-tmp/medstyleaudit-experiments/checkpoints/resnet50/seed_0042/best.ckpt \
+  --id-logits /root/autodl-tmp/medstyleaudit-experiments/checkpoints/resnet50/seed_0042/id_validation_predictions.csv \
+  --device cuda
+```
+
+Only records created or modified by the wrapped job are considered. Datasets,
+caches, checkpoints, model weights, files over 20 MiB, and exports beyond
+100 MiB total are not committed; `export_manifest.json` records every copied or skipped file. Set
+`MEDSTYLE_SKIP_SHUTDOWN=1` for a safe wrapper rehearsal. AutoDL documents
+[`/usr/bin/shutdown` as its post-job shutdown command](https://www.autodl.com/docs/save_money/).
+
 ## Output layout
 
 ```text
 /workspace/experiments/medstyleaudit/
-├── data_integrity/{wilds_summary.csv,slide_mapping.csv,integrity_report.json}
+├── data_integrity/{wilds_summary.csv,slide_mapping.csv,patch_mapping.csv,integrity_report.json}
 ├── lesion_mapping/{alignment_report.json,lesion_features.csv}
 ├── descriptors/{descriptors.csv,mask_stability.csv}
 ├── matching/{triplets,coverage,balance}
 ├── checkpoints/<backbone>/seed_<seed>/
-└── primary_audit/<backbone>/seed_<seed>/<split>/
+├── primary_audit/<backbone>/seed_<seed>/<split>/
+└── aggregate/<split>/{combined_*.csv,seed_stability.csv,missing_runs.csv}
 ```
 
 No quantitative paper result is bundled or fabricated. Output schemas are

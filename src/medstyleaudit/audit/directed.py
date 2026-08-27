@@ -13,6 +13,26 @@ from .hcs import common_support_hcs, directed_hcs, pair_weighted_hcs
 from .metrics import donor_pair_metrics, fit_logit_normalizer, source_metrics
 
 
+def expected_pairs_for_split(config: dict, split: str) -> set[tuple[int, int]]:
+    """Read the prespecified directed pair set without inferring absent pairs."""
+    configured = config.get("audit", {}).get("expected_directed_pairs", {}).get(split)
+    if not configured:
+        raise ValueError(f"No expected directed hospital pairs configured for split={split}")
+    pairs = {tuple(map(int, pair)) for pair in configured}
+    if any(len(pair) != 2 or pair[0] == pair[1] for pair in pairs):
+        raise ValueError(f"Invalid expected directed hospital pairs for split={split}: {configured}")
+    return pairs
+
+
+def _expected_targets(expected_pairs: set[tuple[int, int]] | None) -> dict[int, set[int]] | None:
+    if expected_pairs is None:
+        return None
+    targets: dict[int, set[int]] = {}
+    for source, target in expected_pairs:
+        targets.setdefault(source, set()).add(target)
+    return targets
+
+
 def aggregate_audit(
     predictions: pd.DataFrame,
     id_logits: pd.Series,
@@ -20,6 +40,7 @@ def aggregate_audit(
     q_min: float = 1e-3,
     bootstrap_draws: int = 0,
     bootstrap_seed: int = 42,
+    expected_pairs: set[tuple[int, int]] | None = None,
 ) -> dict[str, pd.DataFrame]:
     normalizer = fit_logit_normalizer(id_logits.to_numpy(), q_min)
     sources = source_metrics(predictions, normalizer)
@@ -44,10 +65,11 @@ def aggregate_audit(
                 result = crossed_multiplier_bootstrap(group, column, cluster_columns, bootstrap_draws, bootstrap_seed)
                 interval_rows.append({**base, "metric": metric, **result, "cluster_columns": ";".join(cluster_columns)})
     outputs["directed_intervals"] = pd.DataFrame(interval_rows)
-    outputs["global_hcs_pair_weighted"] = pair_weighted_hcs(outputs["directed_hcs"])
-    outputs["global_hcs_common_support"] = common_support_hcs(sources)
-    outputs["global_hce_pair_weighted"] = pair_weighted_hce(outputs["directed_hce"])
-    outputs["global_hce_common_support"] = common_support_hce(sources)
+    outputs["global_hcs_pair_weighted"] = pair_weighted_hcs(outputs["directed_hcs"], expected_pairs)
+    targets = _expected_targets(expected_pairs)
+    outputs["global_hcs_common_support"] = common_support_hcs(sources, targets)
+    outputs["global_hce_pair_weighted"] = pair_weighted_hce(outputs["directed_hce"], expected_pairs)
+    outputs["global_hce_common_support"] = common_support_hce(sources, targets)
     directory = Path(output_dir)
     for name, table in outputs.items():
         save_table(table, directory / f"{name}.csv")

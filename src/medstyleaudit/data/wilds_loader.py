@@ -114,6 +114,11 @@ def extract_metadata(dataset: Any) -> pd.DataFrame:
     if metadata.ndim != 2 or metadata.shape[1] != len(fields):
         raise ValueError("Unexpected WILDS metadata shape")
     frame = pd.DataFrame(metadata, columns=fields)
+    private_metadata = getattr(dataset, "_metadata_df", None)
+    if isinstance(private_metadata, pd.DataFrame) and len(private_metadata) == len(frame):
+        for column in ["patient", "patient_id", "node", "x_coord", "y_coord", "image_id"]:
+            if column in private_metadata and column not in frame:
+                frame[column] = private_metadata[column].to_numpy()
     frame.insert(0, "source_id", np.arange(len(frame), dtype=np.int64))
     frame["label"] = np.asarray(dataset.y_array).reshape(-1)
     split_array = np.asarray(dataset.split_array).reshape(-1)

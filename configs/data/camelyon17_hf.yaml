@@ -24,3 +24,10 @@ mask:
   value_max: 0.95
   min_object_size: 8
   closing_radius: 1
+patch_mapping:
+  annotation_root: ${MEDSTYLE_DATA_ROOT}/camelyon17/annotations
+  patch_size: 96
+  scale: 1.0
+  coordinate_level: 0
+  orientation: identity
+  coordinate_reference: top_left

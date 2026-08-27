@@ -19,6 +19,21 @@ def roi_identity_metrics(source: np.ndarray, composite: np.ndarray, roi_size: in
     return {"max_roi_difference": float(difference.max(initial=0)), "mean_roi_difference": float(difference.mean()), "roi_equal": float(equal), "roi_ssim": 1.0 if equal else float("nan")}
 
 
+def tensor_roi_identity_metrics(source, composite, roi_size: int = 32) -> dict[str, float]:
+    """Check exact equality on the final CHW classifier input tensor."""
+    import torch
+
+    y, x = roi_slices(tuple(source.shape), roi_size)
+    first = source[..., y, x]
+    second = composite[..., y, x]
+    difference = torch.abs(first - second)
+    return {
+        "tensor_roi_equal": float(torch.equal(first, second)),
+        "tensor_max_roi_difference": float(difference.max().item()) if difference.numel() else 0.0,
+        "tensor_mean_roi_difference": float(difference.float().mean().item()) if difference.numel() else 0.0,
+    }
+
+
 def seam_metrics(image: np.ndarray, roi_size: int = 32, buffer: int = 0, ring_width: int = 1) -> dict[str, float]:
     channel_last = image.ndim == 3 and image.shape[-1] in {1, 3, 4}
     spatial = image.shape[:2] if channel_last else image.shape[-2:]
