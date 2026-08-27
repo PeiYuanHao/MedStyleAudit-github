@@ -6,6 +6,21 @@ if [[ $# -eq 0 ]]; then
   exit 2
 fi
 
+shutdown_on_exit() {
+  local exit_status=$?
+  trap - EXIT INT TERM
+  if [[ "${MEDSTYLE_SKIP_SHUTDOWN:-0}" == "1" ]]; then
+    echo "Shutdown skipped because MEDSTYLE_SKIP_SHUTDOWN=1."
+  else
+    echo "AutoDL job ended with status ${exit_status}; shutting down now."
+    /usr/bin/shutdown || true
+  fi
+  exit "${exit_status}"
+}
+trap shutdown_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export MEDSTYLE_DATA_ROOT="${MEDSTYLE_DATA_ROOT:-/root/autodl-tmp/datasets}"
 export MEDSTYLE_OUTPUT_ROOT="${MEDSTYLE_OUTPUT_ROOT:-/root/autodl-tmp/medstyleaudit-experiments}"
@@ -26,7 +41,14 @@ git config user.name >/dev/null 2>&1 || git config user.name "MedStyleAudit Auto
 git config user.email >/dev/null 2>&1 || git config user.email "autodl@medstyleaudit.local"
 
 echo "Running experiment command: $*"
+set +e
 "$@"
+EXPERIMENT_EXIT_STATUS=$?
+set -e
+printf '{"experiment_exit_status": %d, "status": "%s"}\n' \
+  "${EXPERIMENT_EXIT_STATUS}" \
+  "$([[ ${EXPERIMENT_EXIT_STATUS} -eq 0 ]] && echo completed || echo failed)" \
+  > "${MEDSTYLE_OUTPUT_ROOT}/autodl-${RESULT_TAG}-status.json"
 
 # Bring main forward before creating the tracked result snapshot. No force push is used.
 GIT_TERMINAL_PROMPT=0 git pull --ff-only origin main
@@ -46,9 +68,5 @@ fi
 git commit -m "results: add AutoDL experiment ${RESULT_TAG}"
 GIT_TERMINAL_PROMPT=0 git push origin HEAD:main
 
-echo "Experiment results were pushed to origin/main. AutoDL will now shut down."
-if [[ "${MEDSTYLE_SKIP_SHUTDOWN:-0}" == "1" ]]; then
-  echo "Shutdown skipped because MEDSTYLE_SKIP_SHUTDOWN=1."
-  exit 0
-fi
-/usr/bin/shutdown
+echo "Experiment records were pushed to origin/main."
+exit "${EXPERIMENT_EXIT_STATUS}"

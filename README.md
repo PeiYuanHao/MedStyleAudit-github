@@ -134,8 +134,9 @@ bash scripts/autodl_setup.sh
 
 Configure non-interactive GitHub authentication (SSH key or a credential helper)
 before starting an unattended job. The wrapper runs the command, exports only
-GitHub-safe CSV/JSON/YAML/log records to `results/<tag>`, commits and pushes them
-to `main`, and invokes `/usr/bin/shutdown` only after a successful push:
+GitHub-safe CSV/JSON/YAML/log records to `results/<tag>`, and attempts to commit
+and push them to `main`. Its exit trap invokes `/usr/bin/shutdown` whenever the
+job ends, whether the experiment or Git upload succeeds or fails:
 
 ```bash
 MEDSTYLE_RESULT_TAG=resnet50-seed42-val \
