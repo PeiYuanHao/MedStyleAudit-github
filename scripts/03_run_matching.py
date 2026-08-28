@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from medstyleaudit.matching.balance import balance_summary, donor_reuse_summary, feature_balance, slide_reuse_summary
+from medstyleaudit.matching.balance import balance_summary, donor_reuse_detail, donor_reuse_distribution, feature_balance, slide_reuse_detail, slide_reuse_distribution
 from medstyleaudit.matching.candidate_bank import CandidateBank
 from medstyleaudit.matching.coverage import annotate_common_support, attrition_table, common_support_coverage, directed_coverage
 from medstyleaudit.matching.triplet_matcher import BalancedTripletMatcher
@@ -82,8 +82,10 @@ def main() -> None:
     save_table(balance_summary(triplets) if not triplets.empty else triplets, output / "matching_balance.csv")
     if not triplets.empty:
         save_table(feature_balance(triplets, frame, list(settings["descriptor_columns"])), output / "feature_balance.csv")
-        save_table(donor_reuse_summary(triplets, frame), output / "donor_reuse.csv")
-        save_table(slide_reuse_summary(triplets, frame), output / "slide_reuse.csv")
+        save_table(donor_reuse_detail(triplets, frame), output / "donor_reuse.csv")
+        save_table(donor_reuse_distribution(triplets, frame), output / "donor_reuse_summary.csv")
+        save_table(slide_reuse_detail(triplets, frame), output / "slide_reuse.csv")
+        save_table(slide_reuse_distribution(triplets, frame), output / "slide_reuse_summary.csv")
     save_json(bank.standardizer.to_dict(), output / "descriptor_standardizer.json")
     run.complete(status="completed", accepted_triplets=len(triplets), candidate_comparisons=len(ledger))
 

@@ -71,7 +71,8 @@ def run_final_preflight(specification: Mapping[str, Any], output_path: str | Pat
     if files.get("donor_reuse") and files["donor_reuse"].is_file():
         reuse = read_table(files["donor_reuse"])
         detail = reuse[reuse["row_type"] == "donor"] if "row_type" in reuse else reuse
-        maximum = int(detail["total_reuse"].max()) if not detail.empty else 0
+        usage_column = "total_uses" if "total_uses" in detail else "total_reuse"
+        maximum = int(detail[usage_column].max()) if not detail.empty else 0
         _record(checks, "donor_reuse_cap", maximum <= int(specification["donor_reuse_cap"]), observed=maximum)
 
     lesion_path = files.get("alignment_report")

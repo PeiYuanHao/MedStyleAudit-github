@@ -89,7 +89,9 @@ def start_run(
     if output_root:
         hash_path = Path(output_root) / "protocol" / "protocol_sha256.txt"
         if hash_path.is_file():
-            info["protocol_hash"] = hash_path.read_text(encoding="utf-8").strip()
+            digest = hash_path.read_text(encoding="utf-8").strip()
+            info["protocol_hash"] = digest
+            info["protocol_sha256"] = digest
     save_json(info, directory / "run_info.json")
     save_yaml(dict(config), directory / "config_resolved.yaml")
     logger.info("run initialized")

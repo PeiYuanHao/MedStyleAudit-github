@@ -116,3 +116,85 @@ def slide_reuse_summary(triplets: pd.DataFrame, descriptors: pd.DataFrame) -> pd
             "maximum_slide_share": float(np.max(shares)), "total_donor_uses": int(uses.sum()),
         })
     return pd.concat([detail, pd.DataFrame(summaries)], ignore_index=True, sort=False)
+
+
+DONOR_REUSE_COLUMNS = ["donor_id", "donor_hospital", "donor_slide", "donor_label", "within_uses", "cross_uses", "total_uses"]
+SLIDE_REUSE_COLUMNS = ["hospital", "slide_id", "within_uses", "cross_uses", "total_uses", "share_of_all_donor_uses"]
+
+
+def donor_reuse_detail(triplets: pd.DataFrame, descriptors: pd.DataFrame) -> pd.DataFrame:
+    """Final-suite donor reuse detail: one row per donor patch with within/cross usage."""
+    if triplets.empty:
+        return pd.DataFrame(columns=DONOR_REUSE_COLUMNS)
+    lookup = descriptors.drop_duplicates("source_id").set_index("source_id")
+    events = []
+    for kind, donor_col, slide_col in (("within", "within_donor", "within_slide"), ("cross", "cross_donor", "cross_slide")):
+        frame = triplets[[donor_col, slide_col]].copy()
+        frame.columns = ["donor_id", "donor_slide"]
+        frame["kind"] = kind
+        events.append(frame)
+    event = pd.concat(events, ignore_index=True)
+    counts = event.pivot_table(index=["donor_id", "donor_slide"], columns="kind", aggfunc="size", fill_value=0).reset_index()
+    for column in ("within", "cross"):
+        if column not in counts:
+            counts[column] = 0
+    counts = counts.rename(columns={"within": "within_uses", "cross": "cross_uses"})
+    counts["total_uses"] = counts["within_uses"] + counts["cross_uses"]
+    counts["donor_hospital"] = counts["donor_id"].map(lookup["hospital_id"])
+    counts["donor_label"] = counts["donor_id"].map(lookup["label"])
+    return counts[DONOR_REUSE_COLUMNS].sort_values(["donor_hospital", "donor_id"]).reset_index(drop=True)
+
+
+def donor_reuse_distribution(triplets: pd.DataFrame, descriptors: pd.DataFrame) -> pd.DataFrame:
+    """Final-suite donor reuse distribution summary across all donors."""
+    detail = donor_reuse_detail(triplets, descriptors)
+    values = detail["total_uses"].to_numpy(dtype=float)
+    empty = float("nan") if not len(values) else None
+    return pd.DataFrame([{
+        "n_unique_donors": int(len(detail)),
+        "median": empty if empty is not None else float(np.median(values)),
+        "p90": empty if empty is not None else float(np.quantile(values, 0.90)),
+        "p95": empty if empty is not None else float(np.quantile(values, 0.95)),
+        "p99": empty if empty is not None else float(np.quantile(values, 0.99)),
+        "max": empty if empty is not None else float(np.max(values)),
+    }])
+
+
+def slide_reuse_detail(triplets: pd.DataFrame, descriptors: pd.DataFrame) -> pd.DataFrame:
+    """Final-suite slide reuse detail: one row per donor slide with within/cross usage."""
+    if triplets.empty:
+        return pd.DataFrame(columns=SLIDE_REUSE_COLUMNS)
+    lookup = descriptors.drop_duplicates("source_id").set_index("source_id")
+    events = []
+    for kind, donor_col, slide_col in (("within", "within_donor", "within_slide"), ("cross", "cross_donor", "cross_slide")):
+        frame = triplets[[donor_col, slide_col]].copy()
+        frame.columns = ["donor_id", "slide_id"]
+        frame["kind"] = kind
+        events.append(frame)
+    event = pd.concat(events, ignore_index=True)
+    event["hospital"] = event["donor_id"].map(lookup["hospital_id"])
+    counts = event.pivot_table(index=["hospital", "slide_id"], columns="kind", aggfunc="size", fill_value=0).reset_index()
+    for column in ("within", "cross"):
+        if column not in counts:
+            counts[column] = 0
+    counts = counts.rename(columns={"within": "within_uses", "cross": "cross_uses"})
+    counts["total_uses"] = counts["within_uses"] + counts["cross_uses"]
+    total = int(counts["total_uses"].sum()) if not counts.empty else 0
+    counts["share_of_all_donor_uses"] = counts["total_uses"] / total if total else 0.0
+    return counts[SLIDE_REUSE_COLUMNS].sort_values(["hospital", "slide_id"]).reset_index(drop=True)
+
+
+def slide_reuse_distribution(triplets: pd.DataFrame, descriptors: pd.DataFrame) -> pd.DataFrame:
+    """Final-suite slide reuse distribution summary across all slides."""
+    detail = slide_reuse_detail(triplets, descriptors)
+    values = detail["total_uses"].to_numpy(dtype=float)
+    empty = float("nan") if not len(values) else None
+    return pd.DataFrame([{
+        "n_unique_slides": int(len(detail)),
+        "median": empty if empty is not None else float(np.median(values)),
+        "p90": empty if empty is not None else float(np.quantile(values, 0.90)),
+        "p95": empty if empty is not None else float(np.quantile(values, 0.95)),
+        "p99": empty if empty is not None else float(np.quantile(values, 0.99)),
+        "max": empty if empty is not None else float(np.max(values)),
+        "maximum_slide_share": float("nan") if not len(detail) else float(np.max(detail["share_of_all_donor_uses"])),
+    }])

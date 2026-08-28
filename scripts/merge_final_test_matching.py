@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from medstyleaudit.matching.balance import balance_summary, donor_reuse_summary, feature_balance, slide_reuse_summary
+from medstyleaudit.matching.balance import balance_summary, donor_reuse_detail, donor_reuse_distribution, feature_balance, slide_reuse_detail, slide_reuse_distribution
 from medstyleaudit.matching.coverage import attrition_table, common_support_coverage, directed_coverage
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import read_table, save_table
@@ -33,20 +33,22 @@ def main() -> None:
     save_table(attrition_table(ledger), primary / "attrition.csv")
     save_table(balance_summary(triplets), primary / "matching_balance.csv")
     save_table(feature_balance(triplets, descriptors, features), primary / "feature_balance.csv")
-    save_table(donor_reuse_summary(triplets, descriptors), primary / "donor_reuse.csv")
-    save_table(slide_reuse_summary(triplets, descriptors), primary / "slide_reuse.csv")
+    save_table(donor_reuse_detail(triplets, descriptors), primary / "donor_reuse.csv")
+    save_table(donor_reuse_distribution(triplets, descriptors), primary / "donor_reuse_summary.csv")
+    save_table(slide_reuse_detail(triplets, descriptors), primary / "slide_reuse.csv")
+    save_table(slide_reuse_distribution(triplets, descriptors), primary / "slide_reuse_summary.csv")
     directed = directed_coverage(ledger); common = common_support_coverage(ledger)
     test_directed = directed[directed["source_split"] == "test"]
     test_common = common[common["source_split"] == "test"]
     feature = feature_balance(triplets, descriptors, features)
     test_feature = feature[feature["source_split"] == "test"]
-    reuse = donor_reuse_summary(triplets, descriptors)
-    donor_rows = reuse[reuse["row_type"] == "donor"]
+    reuse = donor_reuse_detail(triplets, descriptors)
+    donor_rows = reuse
     checks = {
         "directed_coverage": float(test_directed["coverage"].min()) >= .90 if not test_directed.empty else False,
         "common_support_coverage": float(test_common["coverage"].min()) >= .90 if not test_common.empty else False,
         "per_feature_abs_smd": bool(not test_feature.empty and test_feature["paired_smd"].notna().all() and test_feature["paired_smd"].abs().max() <= .10),
-        "donor_reuse_cap": int(donor_rows["total_reuse"].max()) <= int(config["matching"]["donor_reuse_cap"]),
+        "donor_reuse_cap": int(donor_rows["total_uses"].max()) <= int(config["matching"]["donor_reuse_cap"]),
     }
     report = {"status": "PASS" if all(checks.values()) else "FAIL", "checks": checks}
     save_json(report, primary / "final_matching_check.json")

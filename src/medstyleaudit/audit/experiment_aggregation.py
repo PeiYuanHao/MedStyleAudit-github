@@ -119,8 +119,11 @@ def aggregate_experiment_runs(
         for seed in map(int, specification["seeds"]):
             directory = root / split / architecture / f"seed_{seed:04d}"
             legacy_directory = root / architecture / f"seed_{seed:04d}" / split
+            flat_directory = root / architecture / f"seed_{seed:04d}"
             if not directory.is_dir() and legacy_directory.is_dir():
                 directory = legacy_directory
+            if not directory.is_dir() and flat_directory.is_dir():
+                directory = flat_directory
             if not directory.is_dir():
                 missing_rows.append({"backbone": architecture, "seed": seed, "split": split, "status": "missing", "reason": "expected run directory is missing", "run_path": str(directory)})
                 continue

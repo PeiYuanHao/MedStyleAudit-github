@@ -21,7 +21,5 @@ matching:
   query_workers: -1
   min_donor_slide_diversity: 1
   target_hospitals:
-    train: [0, 3, 4]
-    id_val: [0, 3, 4]
     val: [0, 3, 4]
     test: [0, 3, 4]

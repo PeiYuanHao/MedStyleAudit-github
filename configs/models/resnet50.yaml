@@ -1,6 +1,6 @@
 experiment: train_erm_resnet50
 seed: 42
-seeds: [11, 23, 42, 57, 71, 89, 101, 131, 173, 211]
+seeds: [11, 42, 101]
 output_dir: ${MEDSTYLE_OUTPUT_ROOT}/checkpoints/resnet50
 data:
   root: ${MEDSTYLE_DATA_ROOT}/wilds

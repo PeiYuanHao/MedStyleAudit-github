@@ -1,18 +1,25 @@
-# Frozen final experiment plan
+# Frozen final experiment plan (reduced)
 
 The executable order is defined by `configs/final/FINAL_SUITE.yaml` and
-`scripts/run_final_suite.py`: P0 integrity/matching/preflight; seed-11 smoke;
-2×10 primary training; validation audits; required controls; locked-triplet
-robustness and ladder levels 1–4; validation aggregation; explicit hospital-2
-unlock; final-test matching/predictions/audits; final tables; private HF upload
-and checksum verification.
+`scripts/run_final_suite.py`:
 
-The trained-control calibration scope is fixed in `FINAL_SUITE.yaml` to
-ResNet-50 seed 42. ROI-only remains an inference-only falsification for every
-primary model. Thus the required suite trains 20 primary models, one
-context-randomized model, and five planted-shortcut models rather than repeating
-the six calibration models over every primary backbone/seed combination.
+1. **P0** — data integrity, descriptors, balanced matched-triplet matching,
+   matching diagnostics, fixed Hospital-1 subset, preflight.
+2. **P1** — ResNet-50 training for seeds `11`, `42`, `101`.
+3. **P2** — Hospital-1 audit matrix per seed: primary Balanced HCS/HCE, Random
+   Paired, ROI-only, `r=8` buffer, hard boundary.
+4. **P3** — Hospital-1 aggregation.
+5. **P4** — explicit Hospital-2 unlock.
+6. **P5** — Hospital-2 matching/subset/audits using the frozen protocol.
+7. **P6** — final aggregation, Hugging Face upload, manifest generation.
 
-No classifier outcome may tune matching. No missing pair, seed, or backbone is
-silently removed. Lesion-aware analysis is conditional; optional secondary
-mitigation and appearance experiments do not block execution.
+The reduced suite is ResNet-50 only, three seeds, and two held-out audit
+populations (Hospital 1 / validation, Hospital 2 / test). Every robustness
+setting reuses the same fixed audit subset, the same balanced triplets, and the
+same checkpoint; matching is never rematched at `r=8` or the hard boundary.
+
+No classifier outcome may tune matching. No missing pair, seed, or population is
+silently removed. Lesion-aware analysis is conditional and optional; deleted
+experiments (DenseNet-121, ten-seed runs, planted shortcut, context-randomized
+training, the identification ladder, and secondary mitigation/appearance work)
+do not appear in the final runner.

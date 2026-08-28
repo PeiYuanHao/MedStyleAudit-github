@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 export MEDSTYLE_DATA_ROOT="${MEDSTYLE_DATA_ROOT:-/root/autodl-tmp/datasets}"
 export MEDSTYLE_OUTPUT_ROOT="${MEDSTYLE_OUTPUT_ROOT:-/root/autodl-tmp/medstyleaudit-experiments}"
+export HF_HOME="${HF_HOME:-/root/autodl-tmp/huggingface-cache}"
 export MEDSTYLE_HF_REPO="${MEDSTYLE_HF_REPO:-PeiyuanHao/MedStyleAudit-Experiments}"
 export MEDSTYLE_SHUTDOWN_ON_FAILURE="${MEDSTYLE_SHUTDOWN_ON_FAILURE:-1}"
 : "${HF_TOKEN:?HF_TOKEN must already be present in the environment}"

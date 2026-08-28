@@ -36,40 +36,42 @@ uploads skip checksum-identical files; verification fails on a mismatch.
 
 ## Frozen suite
 
-- Backbones: random-initialized ResNet-50 and DenseNet-121.
-- Seeds: `11, 23, 42, 57, 71, 89, 101, 131, 173, 211`.
+The final manuscript uses a permanently reduced suite. The canonical description
+is [`docs/FINAL_PAPER_EXPERIMENTS.md`](docs/FINAL_PAPER_EXPERIMENTS.md); the
+machine-readable protocol is
+[`configs/final/FINAL_PROTOCOL.yaml`](configs/final/FINAL_PROTOCOL.yaml).
+
+- Backbone: random-initialized ResNet-50 only (no pretrained weights).
+- Seeds: `11, 42, 101`.
 - Matching: three donors/source, `lambda_balance=2.0`, `lambda_pair=0.25`,
   `tau_distance=6.0`, `tau_balance=1.0`, candidate pool 64, donor cap 20.
-- Controls: ROI-only, context-randomized, planted shortcut at
-  `rho=[0,.25,.50,.75,1]`. ROI-only is evaluated for all primary models; the
-  two controls that require new training use the predeclared ResNet-50 seed 42
-  calibration scope and are not repeated across all 20 primary runs.
-- Robustness: locked-triplet buffers `[0,4,8,16]`, hard versus primary feathered
-  seam, and lesion-aware only when alignment is validated.
-- Identification ladder: levels 1–4 required; lesion-aware conditional.
+- Audit source hospitals: Hospital 1 (OOD validation) and Hospital 2 (final
+  OOD test, locked until explicit unlock). Training hospitals 0/3/4 serve only
+  as the cross-donor bank and ID-validation normalization.
+- Low-cost checks: Random Paired, ROI-only, `r=8` buffer, and hard vs feathered
+  boundary — each reusing the same fixed audit subset, triplets, and checkpoint.
+- Lesion-aware analysis is optional and only runs when WSI/XML alignment is
+  already validated.
 
 The runner executes: environment and tests; integrity and P0 matching; preflight;
-one full seed-11 smoke path; both backbones × ten seeds; validation audits;
-controls and robustness; validation aggregation; explicit final-test unlock;
-hospital-2 matching/predictions/audits; final tables; HF upload and verification.
+the fixed Hospital-1 subset; ResNet-50 training for seeds 11/42/101; the Hospital-1
+audit matrix; Hospital-1 aggregation; explicit final-test unlock; Hospital-2
+matching/subset/audits; final aggregation; Hugging Face upload and verification.
 Every stage has a completion marker and validated expected outputs. Re-running
 resumes completed stages; `--force` intentionally recomputes them.
 
 CUDA training uses deterministic FP16 AMP, channels-last tensors, pinned-memory
 workers, and persistent prefetching. Counterfactual inference batches multiple
-triplets per GPU call. On a multi-GPU server, primary training, trained controls,
-robustness, ladder audits, lesion-aware audits, and final-test audits are all
-scheduled across the listed devices:
+triplets per GPU call. On a multi-GPU server, primary training, the Hospital-1
+audit matrix, and the final-test audit matrix are all scheduled across the
+listed devices:
 
 ```bash
 bash scripts/autodl_run_final_suite.sh --devices cuda:0 cuda:1 cuda:2 cuda:3
 ```
 
-For manual primary-only sharding, run `python scripts/run_final_suite.py` with
-`--backbones` and/or `--seeds`. A shard stops after its validation audits and
-deliberately does not aggregate, open the final test, or upload. Do not use the
-AutoDL wrapper for a shard because the wrapper shuts the instance down after a
-successful command.
+The reduced suite has no manual backbone/seed sharding; the full suite resumes
+in place via `--resume` and can be recomputed with `--force`.
 
 ## Installation and tests
 
@@ -124,8 +126,12 @@ keeps the instance running.
 
 Optional secondary experiments are appearance-matched ladder level 6, GroupDRO,
 HED augmentation, context-consistency mitigation, and a second external medical
-dataset. They do not block the suite. Unavailable lesion alignment records
-`lesion_aware_status=unavailable` and does not block the core audit.
+dataset. They are legacy/optional and are **not** part of the final paper suite;
+they do not appear in the final runner and do not block execution. Unavailable
+lesion alignment records `lesion_aware_status=unavailable` and does not block the
+core audit.
 
-See [`docs/ARTIFACT_REPOSITORY.md`](docs/ARTIFACT_REPOSITORY.md) and
+See [`docs/FINAL_PAPER_EXPERIMENTS.md`](docs/FINAL_PAPER_EXPERIMENTS.md),
+[`docs/FINAL_CODE_BLOCKERS.md`](docs/FINAL_CODE_BLOCKERS.md),
+[`docs/ARTIFACT_REPOSITORY.md`](docs/ARTIFACT_REPOSITORY.md) and
 [`docs/SERVER_GUIDE.md`](docs/SERVER_GUIDE.md).
