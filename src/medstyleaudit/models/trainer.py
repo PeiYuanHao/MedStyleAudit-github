@@ -61,11 +61,16 @@ def train(model, train_loader, validation_loader, config: Mapping[str, Any], out
     criterion = torch.nn.BCEWithLogitsLoss()
     start_epoch, best = 0, -float("inf") if settings.get("maximize_metric", True) else float("inf")
     resume = settings.get("resume")
+    history = []
     if resume:
         state = torch.load(resume, map_location=device)
         model.load_state_dict(state["model"]); optimizer.load_state_dict(state["optimizer"])
+        if "scheduler" in state:
+            scheduler.load_state_dict(state["scheduler"])
         start_epoch, best = int(state["epoch"]) + 1, float(state["best_metric"])
-    history = []
+        metrics_path = directory / "metrics.csv"
+        if metrics_path.is_file():
+            history = pd.read_csv(metrics_path).to_dict("records")
     max_batches = int(settings.get("dry_run_batches", 2)) if dry_run else None
     from tqdm.auto import tqdm
     epochs = range(start_epoch, 1 if dry_run else int(settings["epochs"]))
@@ -84,10 +89,10 @@ def train(model, train_loader, validation_loader, config: Mapping[str, Any], out
         history.append(record); save_table(pd.DataFrame(history), directory / "metrics.csv")
         selection = float(record[settings.get("selection_metric", "val_auroc")])
         improved = selection > best if settings.get("maximize_metric", True) else selection < best
-        checkpoint = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict(), "best_metric": selection if improved else best, "config": dict(config)}
+        scheduler.step()
+        checkpoint = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "best_metric": selection if improved else best, "config": dict(config)}
         torch.save(checkpoint, directory / "last.ckpt")
         if improved:
             best = selection; torch.save(checkpoint, directory / "best.ckpt")
             if settings.get("save_predictions", True): save_table(predictions, directory / "best_validation_predictions.csv")
-        scheduler.step()
     return pd.DataFrame(history)

@@ -1,42 +1,34 @@
-# Server guide
+# Final AutoDL execution guide
 
-Recommended layout:
-
-```text
-/workspace/MedStyleAudit                            # Git repository: code only
-/workspace/datasets/huggingface/Camelyon17-WILDS   # persistent dataset disk
-/workspace/datasets/camelyon17                     # optional original WSIs
-/workspace/experiments/medstyleaudit               # outputs and HF cache
-```
-
-Initialize and export the server paths:
+The checkout is code-only. Raw Camelyon17 data and working artifacts stay outside
+it. The exact private Hugging Face Dataset namespace is
+`PeiyuanHao/MedStyleAudit-Experiments`; the GitHub namespace is different.
 
 ```bash
-export MEDSTYLE_DATA_ROOT=/workspace/datasets
-export MEDSTYLE_OUTPUT_ROOT=/workspace/experiments/medstyleaudit
-export HF_HOME=/workspace/experiments/medstyleaudit/cache/huggingface
-bash scripts/server_setup.sh
+git clone https://github.com/PeiYuanHao/MedStyleAudit-github.git
+cd MedStyleAudit-github
+export MEDSTYLE_DATA_ROOT="/root/autodl-tmp/datasets"
+export MEDSTYLE_OUTPUT_ROOT="/root/autodl-tmp/medstyleaudit-experiments"
+export MEDSTYLE_HF_REPO="PeiyuanHao/MedStyleAudit-Experiments"
+test -n "${HF_TOKEN:?HF_TOKEN must already be available in the environment}"
+bash scripts/autodl_setup.sh
+python scripts/hf_create_repository.py
+bash scripts/autodl_run_final_suite.sh
 ```
 
-Download data directly to the persistent dataset disk. Never download into
-`/workspace/MedStyleAudit`:
+The first run ends after validation aggregation with `final_test=locked`. Resume
+only after choosing to open the final test:
 
 ```bash
-python -m pip install -U "huggingface_hub[hf_xet]"
-hf download wltjr1007/Camelyon17-WILDS \
-  --repo-type dataset \
-  --local-dir /workspace/datasets/huggingface/Camelyon17-WILDS
+bash scripts/autodl_run_final_suite.sh --allow-final-test
 ```
 
-Build with `docker compose -f docker/docker-compose.yml build`. Compose now
-requires both storage variables and refuses implicit repository-local mounts.
-It mounts datasets read-only and experiments read/write. Run P0 on CPU before
-renting GPU time.
+If remote checksum verification fails, AutoDL remains running. Inspect
+`logs/final_suite/`, then retry:
 
-Use `--dry-run` for one-seed pipeline validation. Training supports `--resume`;
-every epoch writes `metrics.csv` and `last.ckpt`, while model-selection updates
-`best.ckpt` and saved validation predictions.
+```bash
+python scripts/hf_upload_artifacts.py --root "${MEDSTYLE_OUTPUT_ROOT}"
+python scripts/hf_verify_artifacts.py
+```
 
-Before deleting a rented server, verify that `/workspace/datasets` and
-`/workspace/experiments` are attached persistent volumes or copy the complete
-experiment directory elsewhere.
+The wrapper never deletes local results after upload.

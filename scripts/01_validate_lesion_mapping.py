@@ -16,8 +16,8 @@ def main() -> None:
     parser = common_parser("Validate CAMELYON17 lesion annotation mapping", "configs/data/camelyon17.yaml")
     parser.add_argument("--mapping-csv", type=Path, default=None)
     args = parser.parse_args(); config = load_config(args.config)
-    seed = args.seed if args.seed is not None else int(config.get("seed", 42)); output = args.output_dir or experiment_path("lesion_mapping")
-    mapping_csv = args.mapping_csv or experiment_path("data_integrity/patch_mapping.csv")
+    seed = args.seed if args.seed is not None else int(config.get("seed", 42)); output = args.output_dir or experiment_path("p0/data_integrity")
+    mapping_csv = args.mapping_csv or experiment_path("p0/data_integrity/patch_mapping.csv")
     run = start_run("lesion_mapping", config, output, seed, overwrite=args.overwrite)
     required = {"source_id", "label", "x", "y", "annotation_path", "mapping_status", "patch_size", "scale", "coordinate_level", "orientation", "coordinate_reference"}
     if not mapping_csv.exists():
@@ -34,7 +34,7 @@ def main() -> None:
         counts = mapping["mapping_status"].value_counts(dropna=False).to_dict()
         status = {"status": "unavailable", "reason": "no fully mapped WSI/XML patch records", "mapping_status_counts": counts, "n": 0}
         save_json(status, output / "alignment_report.json")
-        save_table(pd.DataFrame(columns=["source_id", "peripheral_tumor_presence", "peripheral_tumor_fraction", "peripheral_tumor_distance", "peripheral_largest_component", "transplanted_area_tumor_fraction"]), output / "lesion_features.csv")
+        save_table(pd.DataFrame(columns=["source_id", "peripheral_tumor_presence", "peripheral_tumor_fraction", "peripheral_tumor_distance", "peripheral_largest_component", "transplanted_area_tumor_fraction"]), output / "lesion_features.parquet")
         run.complete(status="completed", lesion_mapping="unavailable"); return
     rows, alignment = [], []
     polygon_cache = {}
@@ -60,7 +60,7 @@ def main() -> None:
     if len(alignment) != len(eligible):
         report = {**report, "status": "unavailable", "reason": "mapped annotation assets disappeared before validation"}
     save_json(report, output / "alignment_report.json")
-    save_table(pd.DataFrame(rows), output / "lesion_features.csv")
+    save_table(pd.DataFrame(rows), output / "lesion_features.parquet")
     run.complete(status="completed", lesion_mapping=report["status"])
 
 

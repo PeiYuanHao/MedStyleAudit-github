@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from medstyleaudit.utils.paths import configured_output, experiment_path

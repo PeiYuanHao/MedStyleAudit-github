@@ -1,5 +1,6 @@
 .env
 .venv/
+.test-venv/
 .vscode/
 __pycache__/
 *.py[cod]
@@ -11,6 +12,17 @@ data/external/
 data/interim/
 data/processed/
 outputs/
+/results/
+/p0/
+/protocol/
+/checkpoints/
+/predictions/
+/audits/
+/aggregate/
+/figures/
+/logs/
+/MANIFEST.json
+/final_run_state.json
 *.pt
 *.pth
 *.ckpt

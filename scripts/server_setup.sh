@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${MEDSTYLE_DATA_ROOT:=/workspace/datasets}"
 : "${MEDSTYLE_OUTPUT_ROOT:=/workspace/experiments/medstyleaudit}"
+: "${MEDSTYLE_HF_REPO:=PeiyuanHao/MedStyleAudit-Experiments}"
 
 mkdir -p \
   "${MEDSTYLE_DATA_ROOT}/huggingface/Camelyon17-WILDS" \
@@ -15,6 +16,7 @@ printf '%s\n' \
   "Export these variables before running experiments:" \
   "export MEDSTYLE_DATA_ROOT=${MEDSTYLE_DATA_ROOT}" \
   "export MEDSTYLE_OUTPUT_ROOT=${MEDSTYLE_OUTPUT_ROOT}" \
+  "export MEDSTYLE_HF_REPO=${MEDSTYLE_HF_REPO}" \
   "" \
   "Dataset download was NOT started. To download WILDS manually:" \
   "hf download wltjr1007/Camelyon17-WILDS --repo-type dataset --local-dir ${MEDSTYLE_DATA_ROOT}/huggingface/Camelyon17-WILDS"

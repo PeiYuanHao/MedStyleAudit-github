@@ -45,8 +45,11 @@ class BalancedTripletMatcher:
         def capacity(frame: pd.DataFrame) -> int:
             if frame.empty:
                 return 0
-            patches_per_slide = frame.groupby("slide_id", dropna=False).size().to_numpy(dtype=np.int64)
-            return int(np.minimum(patches_per_slide * donor_cap, slide_cap).sum())
+            remaining = frame.assign(__remaining=[max(donor_cap - self.donor_reuse[source_id], 0) for source_id in frame["source_id"]])
+            capacity_total = 0
+            for slide, group in remaining.groupby("slide_id", dropna=False):
+                capacity_total += min(int(group["__remaining"].sum()), max(slide_cap - self.donor_slide_reuse[slide], 0))
+            return int(capacity_total)
 
         rows = []
         scopes = [("global", None, self.bank.frame)]

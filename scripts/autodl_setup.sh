@@ -4,6 +4,7 @@ set -euo pipefail
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export MEDSTYLE_DATA_ROOT="${MEDSTYLE_DATA_ROOT:-/root/autodl-tmp/datasets}"
 export MEDSTYLE_OUTPUT_ROOT="${MEDSTYLE_OUTPUT_ROOT:-/root/autodl-tmp/medstyleaudit-experiments}"
+export MEDSTYLE_HF_REPO="${MEDSTYLE_HF_REPO:-PeiyuanHao/MedStyleAudit-Experiments}"
 export HF_HOME="${HF_HOME:-/root/autodl-tmp/huggingface-cache}"
 
 mkdir -p \
@@ -29,5 +30,6 @@ printf '%s\n' \
   "AutoDL directories and Python dependencies are ready." \
   "MEDSTYLE_DATA_ROOT=${MEDSTYLE_DATA_ROOT}" \
   "MEDSTYLE_OUTPUT_ROOT=${MEDSTYLE_OUTPUT_ROOT}" \
+  "MEDSTYLE_HF_REPO=${MEDSTYLE_HF_REPO}" \
   "HF_HOME=${HF_HOME}" \
   "No dataset was downloaded."

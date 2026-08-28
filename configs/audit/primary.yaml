@@ -2,8 +2,8 @@ experiment: primary_audit
 seed: 42
 output_dir: ${MEDSTYLE_OUTPUT_ROOT}/primary_audit
 data:
-  triplets: ${MEDSTYLE_OUTPUT_ROOT}/matching/triplets/triplets.csv
-  id_validation_logits: ${MEDSTYLE_OUTPUT_ROOT}/checkpoints/resnet50/seed_0042/id_validation_predictions.csv
+  triplets: ${MEDSTYLE_OUTPUT_ROOT}/p0/matching/triplets.parquet
+  id_validation_logits: ${MEDSTYLE_OUTPUT_ROOT}/predictions/resnet50/seed_0011/id_val.parquet
 audit:
   split: val
   roi_size: 32

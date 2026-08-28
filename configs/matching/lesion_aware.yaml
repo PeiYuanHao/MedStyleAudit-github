@@ -1,6 +1,6 @@
 experiment: lesion_aware_matching
 seed: 42
-output_dir: ${MEDSTYLE_OUTPUT_ROOT}/matching/lesion_aware
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/audits/lesion_aware/matching
 extends: primary.yaml
 matching:
   require_validated_lesion_mapping: true

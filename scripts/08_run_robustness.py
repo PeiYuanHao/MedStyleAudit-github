@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from medstyleaudit.counterfactual.source_buffer import intervention_area_ratio
-from medstyleaudit.audit.directed import aggregate_audit
+from medstyleaudit.audit.directed import aggregate_audit, expected_pairs_for_split
 from medstyleaudit.audit.inference import infer_triplets
 from medstyleaudit.data.wilds_loader import load_wilds_dataset
 from medstyleaudit.models.trainer import build_model
@@ -19,7 +19,7 @@ from medstyleaudit.utils.paths import configured_output, experiment_path
 def main() -> None:
     parser = common_parser("Run robustness grid using locked triplets", "configs/audit/source_buffer.yaml"); parser.add_argument("--triplets", type=Path, default=None); parser.add_argument("--checkpoint", type=Path, default=None); parser.add_argument("--model-config", default="configs/models/resnet50.yaml"); parser.add_argument("--id-logits", type=Path, default=None); parser.add_argument("--split", default="val")
     args = parser.parse_args(); config = load_config(args.config); seed = args.seed if args.seed is not None else int(config.get("seed", 42)); output = args.output_dir or configured_output(config, "robustness")
-    triplet_path = args.triplets or experiment_path("matching/triplets/triplets.csv")
+    triplet_path = args.triplets or experiment_path("p0/matching/triplets.parquet")
     run = start_run(config.get("experiment", "robustness"), config, output, seed, overwrite=args.overwrite)
     triplets = read_table(triplet_path); triplets = triplets[triplets["source_split"] == args.split]
     if args.split == "test" and not args.allow_final_test: raise PermissionError("Final hospital-2 evaluation requires --allow-final-test")
@@ -46,8 +46,11 @@ def main() -> None:
             setting_dir = output / f"setting_{setting_index:03d}"
             predictions, qa = infer_triplets(model, dataset, triplets, transform, device=args.device, source_buffer=int(setting.source_buffer), feather_width=int(setting.feather_width), show_progress=True)
             predictions["seed"] = seed; predictions["backbone"] = model_config["model"]["architecture"]
-            save_table(predictions, setting_dir / "predictions.csv"); save_table(qa, setting_dir / "construction_qa.csv")
-            tables = aggregate_audit(predictions, id_table[logit_column], setting_dir, float(config.get("audit", {}).get("q_min", .001)), int(config.get("audit", {}).get("bootstrap_draws", 0)), seed)
+            save_table(predictions, setting_dir / "audit_records.parquet"); save_table(qa, setting_dir / "construction_qa.csv")
+            primary_config = load_config("configs/audit/primary.yaml")
+            tables = aggregate_audit(predictions, id_table[logit_column], setting_dir, float(primary_config["audit"].get("q_min", .001)), int(primary_config["audit"].get("bootstrap_draws", 0)), seed, expected_pairs_for_split(primary_config, args.split))
+            unavailable = [name for name in ("global_hcs_pair_weighted", "global_hcs_common_support", "global_hce_pair_weighted", "global_hce_common_support") if "status" in tables[name] and (tables[name]["status"] != "available").any()]
+            if unavailable: raise RuntimeError(f"Robustness audit is missing a required directed hospital pair: {unavailable}")
             source_table = tables["source_metrics"].copy()
             source_table["source_buffer"] = int(setting.source_buffer); source_table["boundary_mode"] = setting.boundary_mode; source_table["feather_width"] = int(setting.feather_width)
             all_sources.append(source_table)

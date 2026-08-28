@@ -1,8 +1,8 @@
 experiment: context_randomized_control
 seed: 42
-output_dir: ${MEDSTYLE_OUTPUT_ROOT}/controls/context_randomized
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/audits/context_randomized
 control:
-  assignment: fixed_joint_cell_quotas
+  assignment: source_label_independent_peripheral_donor
   donor_reuse_cap: 20
   exclude_same_physical_id: true
   epochs: 20

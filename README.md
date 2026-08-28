@@ -1,178 +1,113 @@
 # MedStyleAudit
 
-Reproducible experiment code for **Auditing Hospital-Associated Context
+Final experiment execution code for **Auditing Hospital-Associated Context
 Sensitivity with a Pixel-Identical Label-Defining Region**.
 
-For every Camelyon17-WILDS 96x96 source patch, the central label-defining
-32x32 ROI is preserved exactly while matched peripheral context is transplanted
-from same-hospital and cross-hospital donors. The code computes Hospital Context
-Sensitivity (HCS; excess absolute normalized-logit instability) and Hospital
-Context Effect (HCE; signed cross-minus-within shift). These are sensitivity
-contrasts, not causal effects of hospital, scanner, stain, or shortcut use.
+The methodology is frozen in
+[`configs/final/FINAL_PROTOCOL.yaml`](configs/final/FINAL_PROTOCOL.yaml). For
+each 96×96 Camelyon17-WILDS patch, the central 32×32 label-defining ROI is
+preserved exactly while matched peripheral context is transplanted. HCS and HCE
+are sensitivity contrasts; they do not causally identify a hospital, scanner,
+stain, or shortcut mechanism.
 
-## Implementation status
+## Repository responsibilities
 
-Implemented end-to-end:
-
-- metadata integrity, descriptors, balanced matching, coverage, and balance;
-- exact-ROI counterfactual construction and ERM training;
-- primary HCS/HCE, pair completeness checks, robustness, and multi-run aggregation.
-
-Partially implemented:
-
-- lesion mapping (the code path is connected, but results are `unavailable` without exact WSI/XML assets and validated coordinates);
-- context-randomized control (quota preparation only; training/audit are `not_implemented`);
-- planted shortcut (cue utilities only; rho training/audit/calibration are `not_implemented`);
-- identification ladder levels 5/6 (`unavailable` when inputs are absent, otherwise `not_implemented`).
-
-Secondary and not implemented: context-consistency mitigation, GroupDRO, HED
-augmentation, and the complete P2 suite. Placeholder commands report
-`not_implemented`; they do not report successful experiments.
-
-## Implemented primary chain
+| Location | Responsibility | Never stored there |
+|---|---|---|
+| GitHub — `PeiYuanHao/MedStyleAudit-github` | Code, configs, tests, protocol specification, lightweight docs | Checkpoints, predictions, descriptors, triplets, final results |
+| Private HF Dataset — `PeiyuanHao/MedStyleAudit-Experiments` | Derived experiment artifacts, checksums, checkpoints, predictions, audit records, final tables | Raw WILDS images, source shards, WSIs, XML annotations |
+| Server local disk | Raw datasets, working cache, resumable outputs, logs | Nothing is deleted after upload |
 
 ```text
-metadata integrity and slide mapping
--> lesion-alignment validation
--> fixed tissue masks and content descriptors
--> balanced matched-triplet selection
--> coverage, attrition, and balance reports
--> exact-ROI hard/feathered counterfactuals
--> random-initialized ResNet-50/DenseNet-121 training
--> frozen-model HCS/HCE audit
--> crossed bootstrap, primary robustness, OOD summaries
--> configured seed/backbone aggregation with a missing-run ledger
+GitHub (code / config / tests)
+   |
+   | git clone
+   v
+AutoDL Server
+   | raw datasets remain local
+   | resumable final experiments
+   v
+Hugging Face Dataset (derived artifacts / checkpoints / results)
 ```
 
-Every executable run creates `run_info.json`, `config_resolved.yaml`, `run.log`,
-and task-specific CSV/JSON records. Completed runs are not overwritten unless
-`--overwrite` is passed. Hospital 2 (`test`) requires `--allow-final-test`.
+Every HF upload writes `MANIFEST.json` last. It records paths, SHA256, bytes,
+experiment, backbone, seed, split, Git commit, and protocol hash. Repeated
+uploads skip checksum-identical files; verification fails on a mismatch.
 
-## Installation
+## Frozen suite
+
+- Backbones: random-initialized ResNet-50 and DenseNet-121.
+- Seeds: `11, 23, 42, 57, 71, 89, 101, 131, 173, 211`.
+- Matching: three donors/source, `lambda_balance=2.0`, `lambda_pair=0.25`,
+  `tau_distance=6.0`, `tau_balance=1.0`, candidate pool 64, donor cap 20.
+- Controls: ROI-only, context-randomized, planted shortcut at
+  `rho=[0,.25,.50,.75,1]`.
+- Robustness: locked-triplet buffers `[0,4,8,16]`, hard versus primary feathered
+  seam, and lesion-aware only when alignment is validated.
+- Identification ladder: levels 1–4 required; lesion-aware conditional.
+
+The runner executes: environment and tests; integrity and P0 matching; preflight;
+one full seed-11 smoke path; both backbones × ten seeds; validation audits;
+controls and robustness; validation aggregation; explicit final-test unlock;
+hospital-2 matching/predictions/audits; final tables; HF upload and verification.
+Every stage has a completion marker and validated expected outputs. Re-running
+resumes completed stages; `--force` intentionally recomputes them.
+
+## Installation and tests
 
 ```bash
 python -m venv .venv
-# Windows: .venv\Scripts\activate
-# Linux: source .venv/bin/activate
+source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 pytest -q
 ```
 
-The repository contains code only. On the server, data, caches, checkpoints,
-logs, and result tables must use persistent directories outside the checkout:
+Unit tests do not require Camelyon17. NumPy is constrained below 2.0 to avoid
+binary ABI mismatches with scientific Python wheels.
+
+## AutoDL execution
 
 ```bash
-export MEDSTYLE_DATA_ROOT=/workspace/datasets
-export MEDSTYLE_OUTPUT_ROOT=/workspace/experiments/medstyleaudit
-export HF_HOME=/workspace/experiments/medstyleaudit/cache/huggingface
-bash scripts/server_setup.sh
+export MEDSTYLE_DATA_ROOT="/root/autodl-tmp/datasets"
+export MEDSTYLE_OUTPUT_ROOT="/root/autodl-tmp/medstyleaudit-experiments"
+export MEDSTYLE_HF_REPO="PeiyuanHao/MedStyleAudit-Experiments"
+test -n "${HF_TOKEN:?HF_TOKEN must already be available in the environment}"
+export MEDSTYLE_OPERATOR="operator-name"
+export MEDSTYLE_SHUTDOWN_ON_FAILURE="1"
 ```
 
-## Large datasets (manual download only)
+`HF_TOKEN` is read only from the environment and is never stored in source or
+configuration. `MEDSTYLE_OPERATOR` is recommended; `MEDSTYLE_CONDA_ENV` and
+`MEDSTYLE_SHUTDOWN_ON_FAILURE` are optional.
 
-The loaders never initiate a large download. Download directly on the server,
-not on a development machine and not inside the repository.
-
-- Camelyon17-WILDS Parquet mirror: download to
-  `/workspace/datasets/huggingface/Camelyon17-WILDS/`.
-- Original CAMELYON17 WSIs/annotations: <https://camelyon17.grand-challenge.org/Data/>;
-  these are optional for the core audit and should be deferred.
-
-See [docs/DATASETS.md](docs/DATASETS.md). The WILDS labeled archive is roughly
-10 GB compressed/15 GB on disk; original WSIs are substantially larger. Neither
-is downloaded or tracked by this repository.
-
-The current CodaLab bundle is unreliable, so the server-first examples use the
-complete Hugging Face Parquet mirror and `*_hf.yaml` configs.
-
-## Staged execution
-
-Run the CPU feasibility gate first:
+Create/confirm the private dataset repository:
 
 ```bash
-python scripts/00_data_integrity.py --config configs/data/camelyon17_hf.yaml
-python scripts/01_validate_lesion_mapping.py --config configs/data/camelyon17_hf.yaml
-python scripts/02_build_descriptors.py --config configs/data/camelyon17_hf.yaml
-python scripts/03_run_matching.py --config configs/matching/primary.yaml
-python scripts/04_check_matching_coverage.py --config configs/matching/primary.yaml
+export MEDSTYLE_HF_REPO="PeiyuanHao/MedStyleAudit-Experiments"
+python scripts/hf_create_repository.py
 ```
 
-Review `${MEDSTYLE_OUTPUT_ROOT}/matching/coverage_review/feasibility_gate.json` before GPU
-training. Then run a one-seed smoke test:
-
-Phase 3 first writes `matching/coverage/reuse_capacity.csv` and refuses to enter
-the source loop when the prespecified donor or donor-slide reuse caps have
-insufficient metadata-only capacity. The operational slide cap is deliberately
-nonbinding relative to patch-level reuse for the P0 feasibility run; its final
-value remains a protocol parameter to lock before model-outcome access.
+Run through validation while hospital 2 remains locked:
 
 ```bash
-python scripts/05_train_erm.py --config configs/models/resnet50_hf.yaml --seed 42 --device cuda --dry-run
-python scripts/06_run_primary_audit.py --config configs/audit/primary.yaml \
-  --model-config configs/models/resnet50_hf.yaml \
-  --checkpoint ${MEDSTYLE_OUTPUT_ROOT}/checkpoints/resnet50/seed_0042/best.ckpt \
-  --id-logits ${MEDSTYLE_OUTPUT_ROOT}/checkpoints/resnet50/seed_0042/id_validation_predictions.csv \
-  --device cuda --dry-run
+bash scripts/autodl_run_final_suite.sh
 ```
 
-Only after the full path passes should all ten configured seeds, the second
-backbone, controls, and robustness grids be launched. Lesion-aware results are
-reported unavailable unless annotation alignment passes the configured check.
-
-After the configured runs finish, aggregate them without silently dropping a
-seed or backbone:
+Then explicitly resume and open the final test:
 
 ```bash
-python scripts/12_aggregate_experiments.py --split val
+bash scripts/autodl_run_final_suite.sh --allow-final-test
 ```
 
-## AutoDL 2080 Ti workflow
+The wrapper pulls with `--ff-only`, requires a clean commit, preserves local
+artifacts, and verifies the HF copy before shutdown. HF verification failure
+keeps the instance running.
 
-The supplied AutoDL setup preserves the base image's PyTorch/CUDA installation
-and uses `/root/autodl-tmp` for datasets and experiment outputs:
+Optional secondary experiments are appearance-matched ladder level 6, GroupDRO,
+HED augmentation, context-consistency mitigation, and a second external medical
+dataset. They do not block the suite. Unavailable lesion alignment records
+`lesion_aware_status=unavailable` and does not block the core audit.
 
-```bash
-git clone git@github.com:PeiYuanHao/MedStyleAudit-github.git
-cd MedStyleAudit-github
-bash scripts/autodl_setup.sh
-```
-
-Configure non-interactive GitHub authentication (SSH key or a credential helper)
-before starting an unattended job. The wrapper runs the command, exports only
-GitHub-safe CSV/JSON/YAML/log records to `results/<tag>`, and attempts to commit
-and push them to `main`. Its exit trap invokes `/usr/bin/shutdown` whenever the
-job ends, whether the experiment or Git upload succeeds or fails:
-
-```bash
-MEDSTYLE_RESULT_TAG=resnet50-seed42-val \
-bash scripts/autodl_run_export_shutdown.sh \
-  python scripts/06_run_primary_audit.py --config configs/audit/primary.yaml \
-  --model-config configs/models/resnet50_hf.yaml \
-  --checkpoint /root/autodl-tmp/medstyleaudit-experiments/checkpoints/resnet50/seed_0042/best.ckpt \
-  --id-logits /root/autodl-tmp/medstyleaudit-experiments/checkpoints/resnet50/seed_0042/id_validation_predictions.csv \
-  --device cuda
-```
-
-Only records created or modified by the wrapped job are considered. Datasets,
-caches, checkpoints, model weights, files over 20 MiB, and exports beyond
-100 MiB total are not committed; `export_manifest.json` records every copied or skipped file. Set
-`MEDSTYLE_SKIP_SHUTDOWN=1` for a safe wrapper rehearsal. AutoDL documents
-[`/usr/bin/shutdown` as its post-job shutdown command](https://www.autodl.com/docs/save_money/).
-
-## Output layout
-
-```text
-/workspace/experiments/medstyleaudit/
-├── data_integrity/{wilds_summary.csv,slide_mapping.csv,patch_mapping.csv,integrity_report.json}
-├── lesion_mapping/{alignment_report.json,lesion_features.csv}
-├── descriptors/{descriptors.csv,mask_stability.csv}
-├── matching/{triplets,coverage,balance}
-├── checkpoints/<backbone>/seed_<seed>/
-├── primary_audit/<backbone>/seed_<seed>/<split>/
-└── aggregate/<split>/{combined_*.csv,seed_stability.csv,missing_runs.csv}
-```
-
-No quantitative paper result is bundled or fabricated. Output schemas are
-stable CSV/JSON/YAML files so paper tables and figures remain traceable to raw
-experiment records.
+See [`docs/ARTIFACT_REPOSITORY.md`](docs/ARTIFACT_REPOSITORY.md) and
+[`docs/SERVER_GUIDE.md`](docs/SERVER_GUIDE.md).

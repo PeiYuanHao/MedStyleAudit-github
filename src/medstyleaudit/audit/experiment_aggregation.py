@@ -107,6 +107,8 @@ def aggregate_experiment_runs(
     audit_config: Mapping,
     expected_pairs: set[tuple[int, int]],
     coverage_dir: str | Path | None = None,
+    protocol_hash: str | None = None,
+    git_commit: str | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Aggregate only compatible completed runs and ledger every absent/invalid run."""
     root, output = Path(audit_root), Path(output_dir)
@@ -115,7 +117,10 @@ def aggregate_experiment_runs(
     for architecture, specification in expected_runs.items():
         dataset_version = str(specification["dataset_version"])
         for seed in map(int, specification["seeds"]):
-            directory = root / architecture / f"seed_{seed:04d}" / split
+            directory = root / split / architecture / f"seed_{seed:04d}"
+            legacy_directory = root / architecture / f"seed_{seed:04d}" / split
+            if not directory.is_dir() and legacy_directory.is_dir():
+                directory = legacy_directory
             if not directory.is_dir():
                 missing_rows.append({"backbone": architecture, "seed": seed, "split": split, "status": "missing", "reason": "expected run directory is missing", "run_path": str(directory)})
                 continue
@@ -149,6 +154,10 @@ def aggregate_experiment_runs(
     if not coverage_frames:
         coverage_frames = [pd.DataFrame([{"source_split": split, "summary_type": "all", "status": "unavailable", "reason": "coverage tables are missing"}])]
     expected_counts = {architecture: len(specification["seeds"]) for architecture, specification in expected_runs.items()}
+    expected_total = sum(len(specification["seeds"]) for specification in expected_runs.values())
+    completed_total = expected_total - len(missing_rows)
+    run_status = "complete" if completed_total == expected_total else "incomplete"
+    missing_json = json.dumps([{"backbone": row["backbone"], "seed": row["seed"], "reason": row["reason"]} for row in missing_rows], sort_keys=True)
     outputs = {
         "combined_directed_hcs": directed_hcs,
         "combined_directed_hce": directed_hce,
@@ -159,6 +168,20 @@ def aggregate_experiment_runs(
         "seed_stability": _seed_stability(directed_hcs, directed_hce, expected_counts),
         "missing_runs": pd.DataFrame(missing_rows, columns=["backbone", "seed", "split", "status", "reason", "run_path"]),
     }
+    metadata = {"number_expected_runs": expected_total, "number_completed_runs": completed_total, "missing_runs_detail": missing_json, "status": run_status, "protocol_hash": protocol_hash, "git_commit": git_commit}
+    for name, frame in list(outputs.items()):
+        if name == "missing_runs":
+            frame = frame.copy()
+            if frame.empty:
+                frame = pd.DataFrame([{"backbone": pd.NA, "seed": pd.NA, "split": split, "status": "complete", "reason": "", "run_path": ""}])
+        elif frame.empty:
+            frame = pd.DataFrame([metadata])
+        for column, value in metadata.items():
+            frame[column] = value
+        outputs[name] = frame
     for name, frame in outputs.items():
         save_table(frame, output / f"{name}.csv")
+    aliases = {"directed_hcs": "combined_directed_hcs", "directed_hce": "combined_directed_hce", "global_hcs": "combined_global_hcs", "global_hce": "combined_global_hce", "coverage": "combined_coverage"}
+    for destination, source in aliases.items():
+        save_table(outputs[source], output / f"{destination}.csv")
     return outputs

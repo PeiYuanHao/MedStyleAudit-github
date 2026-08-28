@@ -7,7 +7,6 @@ from typing import Any, Mapping
 import numpy as np
 from scipy.ndimage import median_filter
 from skimage.color import hed2rgb, rgb2hed, rgb2hsv
-from skimage.measure import label, regionprops
 from skimage.morphology import binary_closing, disk, remove_small_holes, remove_small_objects
 
 

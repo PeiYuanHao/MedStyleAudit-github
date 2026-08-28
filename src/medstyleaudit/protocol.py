@@ -1,0 +1,118 @@
+"""Canonical final-protocol hashing and hospital-2 access lock."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Mapping
+
+from medstyleaudit.utils.config import load_config
+from medstyleaudit.utils.io import save_json
+
+
+def resolved_protocol(path: str | Path) -> dict:
+    protocol = load_config(path)
+    protocol.pop("_config_path", None)
+    return protocol
+
+
+def protocol_sha256(path_or_protocol: str | Path | Mapping) -> str:
+    protocol = resolved_protocol(path_or_protocol) if isinstance(path_or_protocol, (str, Path)) else dict(path_or_protocol)
+    canonical = json.dumps(protocol, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def write_protocol_lock(protocol_path: str | Path, output_path: str | Path) -> str:
+    digest = protocol_sha256(protocol_path)
+    destination = Path(output_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(digest + "\n", encoding="utf-8")
+    return digest
+
+
+def verify_protocol_lock(protocol_path: str | Path, hash_path: str | Path) -> str:
+    expected = Path(hash_path).read_text(encoding="utf-8").strip()
+    actual = protocol_sha256(protocol_path)
+    if expected != actual:
+        raise PermissionError(f"Final protocol hash mismatch: locked={expected}, current={actual}")
+    return actual
+
+
+def git_state(repository: str | Path = ".") -> tuple[str, bool]:
+    root = str(Path(repository).resolve())
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=root, check=True, capture_output=True, text=True).stdout.strip())
+    return commit, dirty
+
+
+def authorize_final_test(output_root: str | Path, protocol_path: str | Path = "configs/final/FINAL_PROTOCOL.yaml") -> dict:
+    root = Path(output_root)
+    preflight_path = root / "protocol" / "final_preflight.json"
+    hash_path = root / "protocol" / "protocol_sha256.txt"
+    if not Path(protocol_path).is_file() or not hash_path.is_file() or not preflight_path.is_file():
+        raise PermissionError("Final test is locked: protocol, protocol hash, and PASS preflight are required")
+    protocol_hash = verify_protocol_lock(protocol_path, hash_path)
+    preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+    if preflight.get("status") != "PASS" or preflight.get("protocol_hash") != protocol_hash:
+        raise PermissionError("Final test is locked: final preflight is not PASS for the current protocol")
+    commit, dirty = git_state()
+    if dirty or preflight.get("git_commit") != commit:
+        raise PermissionError("Final test is locked: Git must be clean and match the preflight commit")
+    return {"protocol_hash": protocol_hash, "git_commit": commit}
+
+
+def record_final_test_opened(output_root: str | Path, run_id: str, operator: str | None = None) -> Path:
+    root = Path(output_root)
+    authorization = authorize_final_test(root)
+    path = root / "protocol" / "final_test_opened.json"
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        **authorization,
+        "operator": operator or os.environ.get("MEDSTYLE_OPERATOR") or os.environ.get("USER") or "unknown",
+        "run_id": run_id,
+    }
+    if path.is_file():
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing.get("protocol_hash") != payload["protocol_hash"] or existing.get("git_commit") != payload["git_commit"]:
+            raise PermissionError("Existing final-test marker belongs to another protocol or commit")
+        return path
+    return save_json(payload, path)
+
+
+def assert_frozen_execution_config(
+    *,
+    protocol_path: str | Path = "configs/final/FINAL_PROTOCOL.yaml",
+    matching: Mapping | None = None,
+    model: Mapping | None = None,
+    audit: Mapping | None = None,
+    seed: int | None = None,
+) -> None:
+    """Reject final-test configs that diverge from locked protocol fields."""
+    protocol = resolved_protocol(protocol_path)
+    if matching is not None:
+        keys = ["donors_per_source", "lambda_balance", "lambda_pair", "tau_distance", "tau_balance", "candidate_pool_size", "donor_reuse_cap"]
+        mismatches = [key for key in keys if matching.get(key) != protocol["matching"].get(key)]
+        if list(matching.get("descriptor_columns", [])) != list(protocol["matching"]["descriptor_features"]): mismatches.append("descriptor_columns")
+        if mismatches: raise PermissionError(f"Final-test matching config diverges from the frozen protocol: {mismatches}")
+    if model is not None:
+        architecture = model.get("model", {}).get("architecture")
+        training = model.get("training", {})
+        mismatches = []
+        if architecture not in protocol["models"]["backbones"]: mismatches.append("architecture")
+        if bool(model.get("model", {}).get("pretrained", False)): mismatches.append("pretrained")
+        checks = {"epochs": "epochs", "batch_size": "batch_size", "optimizer": "optimizer", "scheduler": "scheduler", "learning_rate": "learning_rate", "weight_decay": "weight_decay"}
+        for source, target in checks.items():
+            if str(training.get(source)).lower() != str(protocol["models"][target]).lower(): mismatches.append(source)
+        if seed is not None and int(seed) not in protocol["models"]["seeds"]: mismatches.append("seed")
+        if mismatches: raise PermissionError(f"Final-test model config diverges from the frozen protocol: {mismatches}")
+    if audit is not None:
+        expected = protocol["scientific_definitions"]
+        mismatches = [name for name in ("roi_size", "patch_size") if int(audit.get(name, -1)) != int(expected[name])]
+        configured = {tuple(map(int, pair)) for pair in audit.get("expected_directed_pairs", {}).get("test", [])}
+        frozen = {tuple(map(int, pair)) for pair in protocol["audit"]["expected_directed_pairs"]["test"]}
+        if configured != frozen: mismatches.append("expected_directed_pairs.test")
+        if mismatches: raise PermissionError(f"Final-test audit config diverges from the frozen protocol: {mismatches}")

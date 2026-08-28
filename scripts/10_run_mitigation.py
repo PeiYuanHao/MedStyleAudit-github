@@ -1,7 +1,5 @@
 """Backward-compatible entry point; mitigation moved to script 11."""
 
-from pathlib import Path
-
 from medstyleaudit.utils.cli import common_parser
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import save_json

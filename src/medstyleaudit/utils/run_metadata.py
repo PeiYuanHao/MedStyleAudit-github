@@ -6,6 +6,7 @@ import platform
 import socket
 import subprocess
 import sys
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,6 +85,11 @@ def start_run(
         "output_path": str(directory.resolve()),
         **environment_info(),
     }
+    output_root = os.environ.get("MEDSTYLE_OUTPUT_ROOT")
+    if output_root:
+        hash_path = Path(output_root) / "protocol" / "protocol_sha256.txt"
+        if hash_path.is_file():
+            info["protocol_hash"] = hash_path.read_text(encoding="utf-8").strip()
     save_json(info, directory / "run_info.json")
     save_yaml(dict(config), directory / "config_resolved.yaml")
     logger.info("run initialized")

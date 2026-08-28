@@ -9,11 +9,11 @@ def test_advanced_ladder_levels_never_look_like_empty_successes():
     assert pending["status"] == "not_implemented"
 
 
-def test_partial_controls_mark_training_and_audit_not_implemented():
+def test_required_controls_mark_training_and_audit_implemented():
     context = {row["stage"]: row["status"] for row in context_randomized_stages()}
     planted = {row["stage"]: row["status"] for row in planted_shortcut_stages(False)}
     assert context["assignment_quota_preparation"] == "completed"
-    assert context["context_randomized_training"] == "not_implemented"
-    assert context["trained_model_audit"] == "not_implemented"
+    assert context["context_randomized_training"] == "implemented"
+    assert context["trained_model_audit"] == "implemented"
     assert planted["cue_generator"] == "implemented"
-    assert planted["cue_conditioned_training"] == "not_implemented"
+    assert planted["cue_conditioned_training"] == "implemented"

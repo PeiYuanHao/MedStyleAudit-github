@@ -1,8 +1,8 @@
 experiment: balanced_matching
 seed: 42
-output_dir: ${MEDSTYLE_OUTPUT_ROOT}/matching
+output_dir: ${MEDSTYLE_OUTPUT_ROOT}/p0/matching
 data:
-  descriptors: ${MEDSTYLE_OUTPUT_ROOT}/descriptors/descriptors.csv
+  descriptors: ${MEDSTYLE_OUTPUT_ROOT}/p0/descriptors/descriptors.parquet
 matching:
   method: balanced_triplets
   donors_per_source: 3
@@ -15,7 +15,6 @@ matching:
   tau_balance: 1.0
   feature_calipers: {}
   donor_reuse_cap: 20
-  # Metadata-feasible operational cap; lock the final value before outcome access.
   donor_slide_reuse_cap: 200000
   candidate_pool_size: 64
   query_batch_size: 4096

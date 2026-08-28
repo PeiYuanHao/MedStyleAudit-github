@@ -19,7 +19,7 @@ def main() -> None:
     parser = common_parser("Build primary mask-derived descriptors", "configs/data/camelyon17.yaml")
     parser.add_argument("--metadata-csv", type=Path, default=None)
     args = parser.parse_args(); config = load_config(args.config)
-    seed = args.seed if args.seed is not None else int(config.get("seed", 42)); output = args.output_dir or experiment_path("descriptors")
+    seed = args.seed if args.seed is not None else int(config.get("seed", 42)); output = args.output_dir or experiment_path("p0/descriptors")
     run = start_run("build_descriptors", config, output, seed, overwrite=args.overwrite)
     dataset = load_wilds_dataset(config)
     metadata = load_metadata_csv(args.metadata_csv) if args.metadata_csv else extract_metadata(dataset)
@@ -40,8 +40,8 @@ def main() -> None:
                 perturbed_mask = tissue_mask(hed_appearance_perturbation(rgb, h_scale, e_scale), mask_config)
                 perturbed_descriptor = mask_descriptor(perturbed_mask)
                 stability_rows.append({"source_id": record.source_id, "hospital_id": record.hospital_id, "kind": "hed", "perturbation": perturbation, "h_scale": h_scale, "e_scale": e_scale, **overlap_metrics(reference_mask, perturbed_mask), "descriptor_l2": float(__import__("numpy").linalg.norm(descriptor_vector(descriptor) - descriptor_vector(perturbed_descriptor)))})
-    save_table(pd.DataFrame(rows), output / "descriptors.csv")
-    save_table(pd.DataFrame(stability_rows), output / "mask_stability.csv")
+    save_table(pd.DataFrame(rows), output / "descriptors.parquet")
+    save_table(pd.DataFrame(stability_rows), output / "mask_stability.parquet")
     run.complete(status="completed", n_descriptors=len(rows))
 
 

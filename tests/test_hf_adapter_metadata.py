@@ -1,6 +1,5 @@
 import numpy as np
 
-from medstyleaudit.data.wilds_loader import HuggingFaceCamelyon17Adapter
 
 
 def test_hf_split_derivation_rule():
