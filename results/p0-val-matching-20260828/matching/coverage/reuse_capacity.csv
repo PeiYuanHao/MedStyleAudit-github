@@ -1,7 +1,0 @@
-scope,hospital_id,required_donor_uses,available_donor_uses,feasible
-global,,628272,6040020,True
-hospital,0.0,104712,1046880,True
-hospital,1.0,314136,690000,True
-hospital,2.0,0,1208680,True
-hospital,3.0,104712,1433880,True
-hospital,4.0,104712,1660580,True
