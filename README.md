@@ -101,6 +101,12 @@ python scripts/04_check_matching_coverage.py --config configs/matching/primary.y
 Review `${MEDSTYLE_OUTPUT_ROOT}/matching/coverage_review/feasibility_gate.json` before GPU
 training. Then run a one-seed smoke test:
 
+Phase 3 first writes `matching/coverage/reuse_capacity.csv` and refuses to enter
+the source loop when the prespecified donor or donor-slide reuse caps have
+insufficient metadata-only capacity. The operational slide cap is deliberately
+nonbinding relative to patch-level reuse for the P0 feasibility run; its final
+value remains a protocol parameter to lock before model-outcome access.
+
 ```bash
 python scripts/05_train_erm.py --config configs/models/resnet50_hf.yaml --seed 42 --device cuda --dry-run
 python scripts/06_run_primary_audit.py --config configs/audit/primary.yaml \

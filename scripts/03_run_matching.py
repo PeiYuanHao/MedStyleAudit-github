@@ -35,6 +35,15 @@ def main() -> None:
     bank = CandidateBank.build(bank_frame, settings["descriptor_columns"])
     matcher = BalancedTripletMatcher(bank, settings)
     source_rows = bank.frame[bank.frame["source_id"].isin(source_frame["source_id"])]
+    capacity = matcher.reuse_capacity_report(source_rows, settings["target_hospitals"])
+    save_table(capacity, output / "coverage" / "reuse_capacity.csv")
+    infeasible = capacity[~capacity["feasible"]]
+    if not infeasible.empty:
+        run.complete(status="unavailable", reason="infeasible_reuse_capacity", infeasible_scopes=len(infeasible))
+        raise RuntimeError(
+            "Configured donor reuse caps are infeasible; see coverage/reuse_capacity.csv. "
+            "Matching was stopped before the source loop."
+        )
     triplets, ledger = matcher.match(source_rows, settings["target_hospitals"], show_progress=True)
     ledger = annotate_common_support(ledger)
     if not triplets.empty:

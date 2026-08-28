@@ -57,3 +57,28 @@ def test_batched_queries_preserve_sequential_matching_results():
         sequential.extend(selected)
     columns = ["source_id", "target_hospital", "within_donor", "cross_donor", "donor_index"]
     assert batched[columns].to_dict("records") == pd.DataFrame(sequential)[columns].to_dict("records")
+
+
+def test_infeasible_global_reuse_capacity_fails_before_matching():
+    frame = _frame(); bank = CandidateBank.build(frame, ["f1", "f2"])
+    config = {"donors_per_source": 2, "donor_reuse_cap": 99, "donor_slide_reuse_cap": 1}
+    matcher = BalancedTripletMatcher(bank, config)
+    capacity = matcher.reuse_capacity_report(bank.frame, {"train": [0, 1]})
+    assert not bool(capacity.loc[capacity["scope"] == "global", "feasible"].iloc[0])
+    try:
+        matcher.match(bank.frame, {"train": [0, 1]})
+    except ValueError as error:
+        assert "reuse caps are infeasible" in str(error)
+    else:
+        raise AssertionError("infeasible matching must stop before source iteration")
+
+
+def test_active_index_removes_saturated_donors_without_changing_base_bank():
+    frame = _frame(); bank = CandidateBank.build(frame, ["f1", "f2"])
+    key_frame = bank.candidates(hospital=0, label=0, split="train", excluded_physical_ids=set())
+    saturated = set(key_frame["source_id"].iloc[:2])
+    bank.refresh_active(saturated, set())
+    source = bank.frame.iloc[0]
+    positions = bank.query_group(0, 0, "train", source[["__z_f1", "__z_f2"]].to_numpy(float), 10)
+    assert saturated.isdisjoint(set(bank.frame.iloc[positions]["source_id"]))
+    assert saturated.issubset(set(bank.candidates(hospital=0, label=0, split="train", excluded_physical_ids=set())["source_id"]))

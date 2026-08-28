@@ -20,6 +20,48 @@ class BalancedTripletMatcher:
     config: Mapping[str, Any]
     donor_reuse: Counter = field(default_factory=Counter)
     donor_slide_reuse: Counter = field(default_factory=Counter)
+    saturated_donor_ids: set[object] = field(default_factory=set)
+    saturated_slide_ids: set[object] = field(default_factory=set)
+
+    def reuse_capacity_report(self, sources: pd.DataFrame, target_hospitals: Mapping[str, list[int]]) -> pd.DataFrame:
+        """Necessary metadata-only capacity check for the configured global reuse caps."""
+        k_required = int(self.config.get("donors_per_source", 1))
+        donor_cap = int(self.config.get("donor_reuse_cap", 2**31 - 1))
+        slide_cap = int(self.config.get("donor_slide_reuse_cap", 2**31 - 1))
+        demand: Counter = Counter()
+        grouped = sources.groupby(["split", "hospital_id"], dropna=False).size()
+        for (split_value, source_hospital), source_count in grouped.items():
+            split = str(split_value)
+            hospital = int(source_hospital)
+            targets = [int(value) for value in target_hospitals.get(split, []) if int(value) != hospital]
+            within_demand = int(source_count) * len(targets) * k_required
+            demand[("hospital", hospital)] += within_demand
+            demand[("global", None)] += within_demand
+            for target in targets:
+                cross_demand = int(source_count) * k_required
+                demand[("hospital", target)] += cross_demand
+                demand[("global", None)] += cross_demand
+
+        def capacity(frame: pd.DataFrame) -> int:
+            if frame.empty:
+                return 0
+            patches_per_slide = frame.groupby("slide_id", dropna=False).size().to_numpy(dtype=np.int64)
+            return int(np.minimum(patches_per_slide * donor_cap, slide_cap).sum())
+
+        rows = []
+        scopes = [("global", None, self.bank.frame)]
+        scopes.extend(("hospital", int(hospital), group) for hospital, group in self.bank.frame.groupby("hospital_id", sort=True))
+        for scope, hospital, frame in scopes:
+            required = int(demand[(scope, hospital)])
+            available = capacity(frame)
+            rows.append({
+                "scope": scope,
+                "hospital_id": hospital,
+                "required_donor_uses": required,
+                "available_donor_uses": available,
+                "feasible": required <= available,
+            })
+        return pd.DataFrame(rows)
 
     def _eligible_by_cap(self, frame: pd.DataFrame) -> pd.DataFrame:
         reuse_cap = int(self.config.get("donor_reuse_cap", 2**31 - 1))
@@ -214,6 +256,10 @@ class BalancedTripletMatcher:
             for donor, slide in [(record["within_donor"], record["within_slide"]), (record["cross_donor"], record["cross_slide"])]:
                 self.donor_reuse[donor] += 1
                 self.donor_slide_reuse[slide] += 1
+                if self.donor_reuse[donor] >= int(settings.get("donor_reuse_cap", 2**31 - 1)):
+                    self.saturated_donor_ids.add(donor)
+                if self.donor_slide_reuse[slide] >= slide_cap:
+                    self.saturated_slide_ids.add(slide)
         return selected, None
 
     def _prefetch_candidates(self, sources: pd.DataFrame, target_hospitals: Mapping[str, list[int]]) -> dict[tuple[object, int, int, str], np.ndarray]:
@@ -246,6 +292,14 @@ class BalancedTripletMatcher:
         return prefetch
 
     def match(self, sources: pd.DataFrame, target_hospitals: Mapping[str, list[int]], show_progress: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
+        capacity = self.reuse_capacity_report(sources, target_hospitals)
+        infeasible = capacity[~capacity["feasible"]]
+        if not infeasible.empty:
+            details = "; ".join(
+                f"{row.scope}:{row.hospital_id} requires {row.required_donor_uses}, capacity {row.available_donor_uses}"
+                for row in infeasible.itertuples()
+            )
+            raise ValueError(f"Configured donor reuse caps are infeasible before matching: {details}")
         triplets, ledger = [], []
         ordered = sources.sort_values(["source_split", "source_hospital", "source_id"] if "source_split" in sources else ["split", "hospital_id", "source_id"])
         progress = None
@@ -254,6 +308,7 @@ class BalancedTripletMatcher:
             progress = tqdm(total=len(ordered), desc="Phase 3 balanced matching", unit="source")
         batch_size = int(self.config.get("query_batch_size", 512))
         for start in range(0, len(ordered), batch_size):
+            self.bank.refresh_active(self.saturated_donor_ids, self.saturated_slide_ids)
             chunk = ordered.iloc[start : start + batch_size]
             prefetch = self._prefetch_candidates(chunk, target_hospitals)
             for _, source in chunk.iterrows():

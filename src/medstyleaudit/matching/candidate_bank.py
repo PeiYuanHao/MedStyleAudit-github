@@ -17,8 +17,11 @@ class CandidateBank:
     frame: pd.DataFrame
     standardizer: Standardizer
     descriptor_columns: list[str]
+    _standardized: np.ndarray = field(repr=False)
     _group_indices: dict[tuple[int, int, str], np.ndarray] = field(default_factory=dict, repr=False)
     _group_trees: dict[tuple[int, int, str], cKDTree] = field(default_factory=dict, repr=False)
+    _active_group_indices: dict[tuple[int, int, str], np.ndarray] | None = field(default=None, repr=False)
+    _active_group_trees: dict[tuple[int, int, str], cKDTree] | None = field(default=None, repr=False)
 
     @classmethod
     def build(
@@ -46,23 +49,51 @@ class CandidateBank:
             ordered_positions = np.sort(np.asarray(positions, dtype=np.int64))
             group_indices[key] = ordered_positions
             group_trees[key] = cKDTree(standardized[ordered_positions])
-        return cls(result, standardizer, descriptor_columns, group_indices, group_trees)
+        return cls(result, standardizer, descriptor_columns, standardized, group_indices, group_trees)
 
     @staticmethod
     def _key(hospital: int, label: int, split: str) -> tuple[int, int, str]:
         return int(hospital), int(label), str(split)
 
+    def refresh_active(self, saturated_source_ids: set[object], saturated_slide_ids: set[object]) -> None:
+        """Rebuild query trees without donors whose monotone reuse caps are exhausted."""
+        if not saturated_source_ids and not saturated_slide_ids:
+            self._active_group_indices = None
+            self._active_group_trees = None
+            return
+        mask = np.ones(len(self.frame), dtype=bool)
+        if saturated_source_ids:
+            mask &= ~self.frame["source_id"].isin(saturated_source_ids).to_numpy()
+        if saturated_slide_ids:
+            mask &= ~self.frame["slide_id"].isin(saturated_slide_ids).to_numpy()
+        active_indices: dict[tuple[int, int, str], np.ndarray] = {}
+        active_trees: dict[tuple[int, int, str], cKDTree] = {}
+        for key, positions in self._group_indices.items():
+            active = positions[mask[positions]]
+            active_indices[key] = active
+            if len(active):
+                active_trees[key] = cKDTree(self._standardized[active])
+        self._active_group_indices = active_indices
+        self._active_group_trees = active_trees
+
+    def _query_groups(self) -> tuple[dict[tuple[int, int, str], np.ndarray], dict[tuple[int, int, str], cKDTree]]:
+        if self._active_group_indices is not None and self._active_group_trees is not None:
+            return self._active_group_indices, self._active_group_trees
+        return self._group_indices, self._group_trees
+
     def group_size(self, hospital: int, label: int, split: str) -> int:
-        return len(self._group_indices.get(self._key(hospital, label, split), ()))
+        indices, _ = self._query_groups()
+        return len(indices.get(self._key(hospital, label, split), ()))
 
     def query_group(self, hospital: int, label: int, split: str, vector: np.ndarray, k: int) -> np.ndarray:
         """Return global frame positions of the k nearest indexed candidates."""
         key = self._key(hospital, label, split)
-        positions = self._group_indices.get(key)
+        indices, trees = self._query_groups()
+        positions = indices.get(key)
         if positions is None or not len(positions) or k <= 0:
             return np.empty(0, dtype=np.int64)
         count = min(int(k), len(positions))
-        _, local = self._group_trees[key].query(np.asarray(vector, dtype=np.float64), k=count, workers=1)
+        _, local = trees[key].query(np.asarray(vector, dtype=np.float64), k=count, workers=1)
         return positions[np.atleast_1d(local).astype(np.int64)]
 
     def query_group_batch(
@@ -76,12 +107,13 @@ class CandidateBank:
     ) -> np.ndarray:
         """Batch nearest-neighbor queries while retaining global frame positions."""
         key = self._key(hospital, label, split)
-        positions = self._group_indices.get(key)
+        indices, trees = self._query_groups()
+        positions = indices.get(key)
         vectors = np.asarray(vectors, dtype=np.float64)
         if positions is None or not len(positions) or k <= 0:
             return np.empty((len(vectors), 0), dtype=np.int64)
         count = min(int(k), len(positions))
-        _, local = self._group_trees[key].query(vectors, k=count, workers=int(workers))
+        _, local = trees[key].query(vectors, k=count, workers=int(workers))
         local = np.asarray(local, dtype=np.int64)
         if count == 1:
             local = local[:, None]
@@ -90,10 +122,11 @@ class CandidateBank:
     def query_group_radius(self, hospital: int, label: int, split: str, vector: np.ndarray, radius: float) -> np.ndarray:
         """Return every indexed candidate within radius, including distance ties."""
         key = self._key(hospital, label, split)
-        positions = self._group_indices.get(key)
+        indices, trees = self._query_groups()
+        positions = indices.get(key)
         if positions is None or not len(positions):
             return np.empty(0, dtype=np.int64)
-        local = self._group_trees[key].query_ball_point(np.asarray(vector, dtype=np.float64), float(radius), workers=1)
+        local = trees[key].query_ball_point(np.asarray(vector, dtype=np.float64), float(radius), workers=1)
         return positions[np.asarray(local, dtype=np.int64)]
 
     def candidates(
