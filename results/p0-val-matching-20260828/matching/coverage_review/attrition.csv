@@ -1,0 +1,10 @@
+source_split,source_hospital,target_hospital,exclusion_reason,count
+val,1,0,accepted,33991
+val,1,0,distance_threshold,297
+val,1,0,insufficient_balanced_pairs,616
+val,1,3,accepted,33671
+val,1,3,distance_threshold,293
+val,1,3,insufficient_balanced_pairs,940
+val,1,4,accepted,33895
+val,1,4,distance_threshold,316
+val,1,4,insufficient_balanced_pairs,693

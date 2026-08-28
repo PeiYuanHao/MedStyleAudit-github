@@ -1,0 +1,6 @@
+{
+  "status": "review_required",
+  "minimum_directed_coverage": 0.9646745358698143,
+  "minimum_common_support_coverage": 0.9611792344716938,
+  "message": "Coverage thresholds are scientific decisions; GPU training is not automatically authorized."
+}
