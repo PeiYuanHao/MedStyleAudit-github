@@ -38,56 +38,133 @@ class BalancedTripletMatcher:
         pool = int(self.config.get("candidate_pool_size", 64))
         return result.sort_values(["__distance", "source_id"], kind="mergesort").head(pool)
 
-    def match_source(self, source: pd.Series, target_hospital: int, donor_split: str | None = None) -> tuple[list[dict[str, Any]], str | None]:
+    def _nearest_indexed(
+        self,
+        source_vector: np.ndarray,
+        *,
+        hospital: int,
+        label_value: int,
+        split: str,
+        excluded_physical_ids: set[str],
+        source_ids: set[object] | None = None,
+        initial_positions: np.ndarray | None = None,
+    ) -> pd.DataFrame:
+        """Recover the exact nearest eligible pool using a prespecified KD-tree group."""
+        total = self.bank.group_size(hospital, label_value, split)
+        if total == 0:
+            return self.bank.frame.iloc[:0].assign(__distance=pd.Series(dtype=float))
+        pool = int(self.config.get("candidate_pool_size", 64))
+        probe = min(total, max(pool * 2, 128)) if initial_positions is None else len(initial_positions)
+
+        def eligible(positions: np.ndarray) -> pd.DataFrame:
+            frame = self.bank.frame.iloc[positions]
+            mask = ~frame["physical_id"].astype(str).isin(excluded_physical_ids)
+            if source_ids:
+                mask &= ~frame["source_id"].isin(source_ids)
+            result = self._eligible_by_cap(frame.loc[mask])
+            if result.empty:
+                return result.assign(__distance=pd.Series(dtype=float))
+            result = result.copy()
+            z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
+            result["__distance"] = euclidean_to(source_vector, result[z_columns].to_numpy(float))
+            return result.sort_values(["__distance", "source_id"], kind="mergesort")
+
+        while True:
+            positions = initial_positions if initial_positions is not None else self.bank.query_group(hospital, label_value, split, source_vector, probe)
+            initial_positions = None
+            result = eligible(positions)
+            if len(result) >= pool:
+                cutoff = float(result.iloc[pool - 1]["__distance"])
+                if probe < total:
+                    tolerance = max(1e-12, abs(cutoff) * 1e-12)
+                    z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
+                    retrieved = self.bank.frame.iloc[positions]
+                    boundary = float(euclidean_to(source_vector, retrieved[z_columns].to_numpy(float)).max(initial=0.0))
+                    if cutoff + tolerance >= boundary:
+                        tied_positions = self.bank.query_group_radius(hospital, label_value, split, source_vector, cutoff + tolerance)
+                        result = eligible(tied_positions)
+                return result.head(pool)
+            if probe >= total:
+                return result.head(pool)
+            probe = min(total, probe * 2)
+
+    def _balanced_pair_candidates(self, within: pd.DataFrame, cross: pd.DataFrame) -> list[tuple[float, int, int, float]]:
+        """Vectorize the fixed 64x64 pair costs while preserving deterministic ordering."""
+        settings = self.config
+        d_within = within["__distance"].to_numpy(float)
+        d_cross = cross["__distance"].to_numpy(float)
+        imbalance = np.abs(d_within[:, None] - d_cross[None, :])
+        valid = imbalance <= float(settings.get("tau_balance", np.inf))
+        within_physical = within["physical_id"].astype(str).to_numpy()
+        cross_physical = cross["physical_id"].astype(str).to_numpy()
+        valid &= within_physical[:, None] != cross_physical[None, :]
+        for name, limit in settings.get("feature_calipers", {}).items():
+            valid &= np.abs(within[name].to_numpy(float)[:, None] - cross[name].to_numpy(float)[None, :]) <= float(limit)
+        if not valid.any():
+            return []
+        z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
+        within_z, cross_z = within[z_columns].to_numpy(float), cross[z_columns].to_numpy(float)
+        pair_distance = np.linalg.norm(within_z[:, None, :] - cross_z[None, :, :], axis=2)
+        cost = (
+            d_within[:, None]
+            + d_cross[None, :]
+            + float(settings.get("lambda_balance", 0.0)) * imbalance
+            + float(settings.get("lambda_pair", 0.0)) * pair_distance
+        )
+        within_indices, cross_indices = np.nonzero(valid)
+        within_ids = within["source_id"].astype(str).to_numpy()[within_indices]
+        cross_ids = cross["source_id"].astype(str).to_numpy()[cross_indices]
+        candidate_costs = cost[within_indices, cross_indices]
+        order = np.lexsort((cross_ids, within_ids, candidate_costs))
+        return [
+            (float(candidate_costs[index]), int(within_indices[index]), int(cross_indices[index]), float(pair_distance[within_indices[index], cross_indices[index]]))
+            for index in order
+        ]
+
+    def match_source(
+        self,
+        source: pd.Series,
+        target_hospital: int,
+        donor_split: str | None = None,
+        candidate_prefetch: Mapping[tuple[object, int, int, str], np.ndarray] | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
         """Select exactly K within/cross donor pairs or return a single exclusion reason."""
         settings = self.config
         k_required = int(settings.get("donors_per_source", 1))
         source_vector = source[[f"__z_{column}" for column in self.bank.descriptor_columns]].to_numpy(float)
         excluded = {str(source["physical_id"])}
-        within = self.bank.candidates(
-            hospital=int(source["hospital_id"]), label=int(source["label"]),
-            excluded_physical_ids=excluded, split=source["split"], source_ids={source["source_id"]},
+        prefetch = candidate_prefetch or {}
+        source_id, label_value = source["source_id"], int(source["label"])
+        within_key = (source_id, int(source["hospital_id"]), label_value, str(source["split"]))
+        cross_key = (source_id, int(target_hospital), label_value, str(donor_split))
+        within = self._nearest_indexed(
+            source_vector,
+            hospital=int(source["hospital_id"]), label_value=label_value,
+            excluded_physical_ids=excluded, split=str(source["split"]), source_ids={source["source_id"]},
+            initial_positions=prefetch.get(within_key),
         )
-        cross = self.bank.candidates(
-            hospital=int(target_hospital), label=int(source["label"]),
-            excluded_physical_ids=excluded, split=donor_split,
+        cross = self._nearest_indexed(
+            source_vector,
+            hospital=int(target_hospital), label_value=label_value,
+            excluded_physical_ids=excluded, split=str(donor_split),
+            initial_positions=prefetch.get(cross_key),
         )
-        within, cross = self._eligible_by_cap(within), self._eligible_by_cap(cross)
         if within.empty:
             return [], "no_within_candidate"
         if cross.empty:
             return [], "no_cross_candidate"
-        within, cross = self._nearest(source_vector, within), self._nearest(source_vector, cross)
         tau_d = float(settings.get("tau_distance", np.inf))
         within, cross = within[within["__distance"] <= tau_d], cross[cross["__distance"] <= tau_d]
         if within.empty or cross.empty:
             return [], "distance_threshold"
-        lambda_balance = float(settings.get("lambda_balance", 0.0))
-        lambda_pair = float(settings.get("lambda_pair", 0.0))
-        tau_balance = float(settings.get("tau_balance", np.inf))
-        calipers = settings.get("feature_calipers", {})
-        rows: list[tuple[float, str, str, pd.Series, pd.Series, float]] = []
-        z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
-        for _, within_row in within.iterrows():
-            for _, cross_row in cross.iterrows():
-                if str(within_row["physical_id"]) == str(cross_row["physical_id"]):
-                    continue
-                d_within, d_cross = float(within_row["__distance"]), float(cross_row["__distance"])
-                imbalance = abs(d_within - d_cross)
-                if imbalance > tau_balance:
-                    continue
-                if any(abs(float(within_row[name]) - float(cross_row[name])) > float(limit) for name, limit in calipers.items()):
-                    continue
-                pair_distance = float(np.linalg.norm(within_row[z_columns].to_numpy(float) - cross_row[z_columns].to_numpy(float)))
-                cost = d_within + d_cross + lambda_balance * imbalance + lambda_pair * pair_distance
-                rows.append((cost, str(within_row["source_id"]), str(cross_row["source_id"]), within_row, cross_row, pair_distance))
-        rows.sort(key=lambda value: (value[0], value[1], value[2]))
+        rows = self._balanced_pair_candidates(within, cross)
         selected, used_within, used_cross = [], set(), set()
         used_within_slides, used_cross_slides = set(), set()
         enforce_within_slide_diversity = within["slide_id"].nunique() >= k_required
         enforce_cross_slide_diversity = cross["slide_id"].nunique() >= k_required
         slide_cap = int(settings.get("donor_slide_reuse_cap", 2**31 - 1))
-        for cost, _, _, within_row, cross_row, pair_distance in rows:
+        for cost, within_index, cross_index, pair_distance in rows:
+            within_row, cross_row = within.iloc[within_index], cross.iloc[cross_index]
             if within_row["source_id"] in used_within or cross_row["source_id"] in used_cross:
                 continue
             if enforce_within_slide_diversity and within_row["slide_id"] in used_within_slides:
@@ -125,24 +202,54 @@ class BalancedTripletMatcher:
                 self.donor_slide_reuse[slide] += 1
         return selected, None
 
+    def _prefetch_candidates(self, sources: pd.DataFrame, target_hospitals: Mapping[str, list[int]]) -> dict[tuple[object, int, int, str], np.ndarray]:
+        """Batch immutable KD-tree queries; dynamic reuse constraints remain sequential."""
+        z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
+        requests: dict[tuple[int, int, str], list[tuple[object, np.ndarray]]] = {}
+        for _, source in sources.iterrows():
+            split = str(source.get("source_split", source["split"]))
+            hospital = int(source.get("source_hospital", source["hospital_id"]))
+            label_value = int(source["label"])
+            donor_split = "train" if split in {"val", "test"} else split
+            keys = {(hospital, label_value, split)}
+            keys.update((int(target), label_value, donor_split) for target in target_hospitals.get(split, []) if int(target) != hospital)
+            vector = source[z_columns].to_numpy(dtype=np.float64)
+            for key in keys:
+                requests.setdefault(key, []).append((source["source_id"], vector))
+        prefetch: dict[tuple[object, int, int, str], np.ndarray] = {}
+        query_size = max(int(self.config.get("candidate_pool_size", 64)) * 2, 128)
+        for (hospital, label_value, split), items in requests.items():
+            positions = self.bank.query_group_batch(hospital, label_value, split, np.stack([item[1] for item in items]), query_size)
+            for (source_id, _), row in zip(items, positions):
+                prefetch[(source_id, hospital, label_value, split)] = row
+        return prefetch
+
     def match(self, sources: pd.DataFrame, target_hospitals: Mapping[str, list[int]], show_progress: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
         triplets, ledger = [], []
         ordered = sources.sort_values(["source_split", "source_hospital", "source_id"] if "source_split" in sources else ["split", "hospital_id", "source_id"])
-        iterator = ordered.iterrows()
+        progress = None
         if show_progress:
             from tqdm.auto import tqdm
-            iterator = tqdm(iterator, total=len(ordered), desc="Phase 3 balanced matching", unit="source")
-        for _, source in iterator:
-            split = source.get("source_split", source["split"])
-            source_hospital = int(source.get("source_hospital", source["hospital_id"]))
-            for target in target_hospitals.get(str(split), []):
-                if int(target) == source_hospital:
-                    continue
-                donor_split = "train" if split in {"val", "test"} else split
-                selected, reason = self.match_source(source, int(target), donor_split)
-                accepted = reason is None
-                ledger.append({"source_id": source["source_id"], "source_split": split, "source_hospital": source_hospital, "target_hospital": int(target), "coverage_status": "accepted" if accepted else "excluded", "exclusion_reason": reason})
-                triplets.extend(selected)
+            progress = tqdm(total=len(ordered), desc="Phase 3 balanced matching", unit="source")
+        batch_size = int(self.config.get("query_batch_size", 512))
+        for start in range(0, len(ordered), batch_size):
+            chunk = ordered.iloc[start : start + batch_size]
+            prefetch = self._prefetch_candidates(chunk, target_hospitals)
+            for _, source in chunk.iterrows():
+                split = source.get("source_split", source["split"])
+                source_hospital = int(source.get("source_hospital", source["hospital_id"]))
+                for target in target_hospitals.get(str(split), []):
+                    if int(target) == source_hospital:
+                        continue
+                    donor_split = "train" if split in {"val", "test"} else split
+                    selected, reason = self.match_source(source, int(target), donor_split, prefetch)
+                    accepted = reason is None
+                    ledger.append({"source_id": source["source_id"], "source_split": split, "source_hospital": source_hospital, "target_hospital": int(target), "coverage_status": "accepted" if accepted else "excluded", "exclusion_reason": reason})
+                    triplets.extend(selected)
+                if progress is not None:
+                    progress.update(1)
+        if progress is not None:
+            progress.close()
         triplets_frame = pd.DataFrame(triplets)
         if not triplets_frame.empty:
             triplets_frame.insert(0, "triplet_id", [f"t{index:09d}" for index in range(len(triplets_frame))])
