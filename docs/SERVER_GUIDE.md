@@ -17,7 +17,7 @@ bash scripts/autodl_run_final_suite.sh
 ```
 
 If the instance has multiple GPUs, list them explicitly; the runner assigns at
-most one training subprocess to each device:
+most one subprocess to each device and parallelizes every per-model phase:
 
 ```bash
 bash scripts/autodl_run_final_suite.sh --devices cuda:0 cuda:1 cuda:2 cuda:3

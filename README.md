@@ -57,8 +57,9 @@ resumes completed stages; `--force` intentionally recomputes them.
 
 CUDA training uses deterministic FP16 AMP, channels-last tensors, pinned-memory
 workers, and persistent prefetching. Counterfactual inference batches multiple
-triplets per GPU call. On a multi-GPU server, independent primary runs can be
-scheduled with:
+triplets per GPU call. On a multi-GPU server, primary training, trained controls,
+robustness, ladder audits, lesion-aware audits, and final-test audits are all
+scheduled across the listed devices:
 
 ```bash
 bash scripts/autodl_run_final_suite.sh --devices cuda:0 cuda:1 cuda:2 cuda:3

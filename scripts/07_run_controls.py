@@ -103,6 +103,7 @@ def main() -> None:
     parser.add_argument("--model-config", default="configs/models/resnet50_hf.yaml")
     parser.add_argument("--audit-config", default="configs/audit/primary.yaml")
     parser.add_argument("--triplets", type=Path, default=None)
+    parser.add_argument("--rho", type=float, default=None, help="Run one configured planted-shortcut strength")
     parser.add_argument("--force-rhos", action="store_true", help="Recompute completed planted-shortcut rho values")
     args = parser.parse_args(); config = load_config(args.config); experiment = config.get("experiment", "control")
     if experiment == "roi_only_control":
@@ -112,7 +113,8 @@ def main() -> None:
     architecture = model_config["model"]["architecture"]
     output_root = args.output_dir or configured_output(config, f"audits/{experiment}")
     output = output_root / architecture / f"seed_{seed:04d}"
-    run = start_run(experiment, config, output, seed, overwrite=args.overwrite)
+    single_rho_output = output / f"rho_{args.rho:.2f}" if experiment == "planted_shortcut_control" and args.rho is not None else None
+    run = start_run(experiment, config, single_rho_output or output, seed, overwrite=args.overwrite)
     descriptor_path = args.descriptor_table or experiment_path("p0/descriptors/descriptors.parquet")
     metadata = read_table(descriptor_path); dataset = load_wilds_dataset(model_config)
     triplets = read_table(args.triplets or experiment_path("p0/matching/triplets.parquet"))
@@ -127,9 +129,14 @@ def main() -> None:
         save_table(pd.DataFrame([{"stage": stage, "status": "completed"} for stage in ["assignment", "training", "audit"]]), output / "control_status.csv")
         run.complete(status="completed", assignment_rows=len(ledger))
     elif experiment == "planted_shortcut_control":
+        configured_strengths = [float(value) for value in settings["strengths"]]
+        if args.rho is not None and float(args.rho) not in configured_strengths:
+            raise ValueError(f"rho={args.rho} is not in the frozen strengths {configured_strengths}")
+        strengths = [float(args.rho)] if args.rho is not None else configured_strengths
         completed = []
-        for rho in map(float, settings["strengths"]):
+        for rho in strengths:
             rho_output = output / f"rho_{rho:.2f}"
+            status_path = rho_output / "rho_status.csv" if args.rho is not None else output / "rho_status.csv"
             required = [
                 rho_output / "checkpoint" / "best.ckpt",
                 rho_output / "id_val.parquet",
@@ -139,7 +146,7 @@ def main() -> None:
             ]
             if not args.force_rhos and all(path.is_file() for path in required):
                 completed.append({"rho": rho, "status": "completed", "resumed": True})
-                save_table(pd.DataFrame(completed), output / "rho_status.csv")
+                save_table(pd.DataFrame(completed), status_path)
                 continue
             train_rows = metadata[metadata["split"] == "train"]
             assignments = []
@@ -149,7 +156,7 @@ def main() -> None:
             save_table(pd.DataFrame(assignments), rho_output / "assignment_ledger.parquet")
             _train_and_audit(dataset, metadata, model_config, audit_config, settings, rho_output, seed, "planted_shortcut", triplets, args.device, args.dry_run, rho=rho)
             completed.append({"rho": rho, "status": "completed", "resumed": False})
-            save_table(pd.DataFrame(completed), output / "rho_status.csv")
+            save_table(pd.DataFrame(completed), status_path)
         run.complete(status="completed", completed_rho=len(completed))
     else:
         raise ValueError(f"Unsupported required control: {experiment}")

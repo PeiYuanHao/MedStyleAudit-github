@@ -211,27 +211,40 @@ class FinalSuite:
         if control_backbone not in self.configs or control_seed not in self.all_seeds:
             raise ValueError(f"Invalid control scope: {control_backbone}/seed {control_seed}")
         control_jobs = []
-        for control in ("context_randomized", "planted_shortcut"):
-            control_config = f"configs/controls/{control}.yaml"
-            root = self.output / "audits" / control / control_backbone / f"seed_{control_seed:04d}"
-            expected = root / ("control_status.csv" if control == "context_randomized" else "rho_status.csv")
+        context_root = self.output / "audits/context_randomized" / control_backbone / f"seed_{control_seed:04d}"
 
-            def control_job(device: str, control=control, control_config=control_config, expected=expected) -> None:
-                command = [PYTHON, "scripts/07_run_controls.py", "--config", control_config, "--model-config", self.configs[control_backbone], "--seed", str(control_seed), "--device", device, "--overwrite"]
-                if self.args.force and control == "planted_shortcut":
+        def context_job(device: str) -> None:
+            command = [PYTHON, "scripts/07_run_controls.py", "--config", "configs/controls/context_randomized.yaml", "--model-config", self.configs[control_backbone], "--seed", str(control_seed), "--device", device, "--overwrite"]
+            self.run(f"control_context_randomized_{control_backbone}_{control_seed:04d}", command, [context_root / "control_status.csv"], "controls")
+
+        control_jobs.append(context_job)
+        planted_root = self.output / "audits/planted_shortcut" / control_backbone / f"seed_{control_seed:04d}"
+        planted_strengths = [float(value) for value in load_config("configs/controls/planted_shortcut.yaml")["control"]["strengths"]]
+        for rho in planted_strengths:
+            rho_root = planted_root / f"rho_{rho:.2f}"
+
+            def planted_job(device: str, rho=rho, rho_root=rho_root) -> None:
+                command = [PYTHON, "scripts/07_run_controls.py", "--config", "configs/controls/planted_shortcut.yaml", "--model-config", self.configs[control_backbone], "--seed", str(control_seed), "--rho", str(rho), "--device", device, "--overwrite"]
+                if self.args.force:
                     command.append("--force-rhos")
-                self.run(f"control_{control}_{control_backbone}_{control_seed:04d}", command, [expected], "controls")
+                self.run(f"control_planted_{control_backbone}_{control_seed:04d}_{rho:.2f}", command, [rho_root / "directed_hcs.csv", rho_root / "directed_hce.csv"], "controls")
 
-            control_jobs.append(control_job)
+            control_jobs.append(planted_job)
         self.parallel(control_jobs)
+        summary_code = "import pandas as pd,sys; from pathlib import Path; root=Path(sys.argv[1]); values=[float(x) for x in sys.argv[2:]]; missing=[x for x in values if not (root/f'rho_{x:.2f}/directed_hcs.csv').is_file()]; assert not missing,missing; pd.DataFrame([{'rho':x,'status':'completed'} for x in values]).to_csv(root/'rho_status.csv',index=False)"
+        self.run("control_planted_summary", [PYTHON, "-c", summary_code, str(planted_root), *map(str, planted_strengths)], [planted_root / "rho_status.csv"], "controls")
 
+        robustness_jobs = []
         for backbone, config in self.configs.items():
             for seed in self.all_seeds:
-                checkpoint = self.output / "checkpoints" / backbone / f"seed_{seed:04d}" / "best.ckpt"
-                logits = self.output / "predictions" / backbone / f"seed_{seed:04d}" / "id_val.parquet"
                 for kind in ("source_buffer", "seam"):
-                    root = self.output / "audits" / kind / backbone / f"seed_{seed:04d}"
-                    self.run(f"robustness_{kind}_{backbone}_{seed:04d}", [PYTHON, "scripts/08_run_robustness.py", "--config", f"configs/audit/{kind}.yaml", "--checkpoint", str(checkpoint), "--model-config", config, "--id-logits", str(logits), "--triplets", str(triplets), "--seed", str(seed), "--device", self.devices[0], "--output-dir", str(root), "--overwrite"], [root / "robustness_summary.csv"], "robustness")
+                    def robustness_job(device: str, backbone=backbone, config=config, seed=seed, kind=kind) -> None:
+                        checkpoint = self.output / "checkpoints" / backbone / f"seed_{seed:04d}" / "best.ckpt"
+                        logits = self.output / "predictions" / backbone / f"seed_{seed:04d}" / "id_val.parquet"
+                        root = self.output / "audits" / kind / backbone / f"seed_{seed:04d}"
+                        self.run(f"robustness_{kind}_{backbone}_{seed:04d}", [PYTHON, "scripts/08_run_robustness.py", "--config", f"configs/audit/{kind}.yaml", "--checkpoint", str(checkpoint), "--model-config", config, "--id-logits", str(logits), "--triplets", str(triplets), "--seed", str(seed), "--device", device, "--output-dir", str(root), "--overwrite"], [root / "robustness_summary.csv"], "robustness")
+                    robustness_jobs.append(robustness_job)
+        self.parallel(robustness_jobs)
         for level in range(1, 5):
             for target in (0, 3, 4):
                 root = self.output / "audits/identification_ladder" / f"level_{level}" / f"target_{target}"
@@ -239,22 +252,30 @@ class FinalSuite:
             combined = self.output / "audits/identification_ladder" / f"level_{level}" / "triplets.parquet"
             combine_code = "import pandas as pd,sys; from pathlib import Path; root=Path(sys.argv[1]); pd.concat([pd.read_parquet(root/f'target_{h}/triplets.parquet') for h in (0,3,4)],ignore_index=True).to_parquet(root/'triplets.parquet',index=False)"
             self.run(f"ladder_{level}_combine", [PYTHON, "-c", combine_code, str(combined.parent)], [combined], "robustness")
+            ladder_jobs = []
             for backbone, config in self.configs.items():
                 for seed in self.all_seeds:
-                    base = self.output / "audits/identification_ladder" / f"level_{level}" / "val" / backbone / f"seed_{seed:04d}"
-                    command = [PYTHON, "scripts/06_run_primary_audit.py", "--model-config", config, "--checkpoint", str(self.output / "checkpoints" / backbone / f"seed_{seed:04d}/best.ckpt"), "--id-logits", str(self.output / "predictions" / backbone / f"seed_{seed:04d}/id_val.parquet"), "--triplets", str(combined), "--split", "val", "--seed", str(seed), "--device", self.devices[0], "--output-dir", str(base), "--overwrite"]
-                    self.run(f"ladder_audit_{level}_{backbone}_{seed:04d}", command, [base / "directed_hcs.csv", base / "directed_hce.csv"], "robustness")
+                    def ladder_job(device: str, level=level, backbone=backbone, config=config, seed=seed, combined=combined) -> None:
+                        base = self.output / "audits/identification_ladder" / f"level_{level}" / "val" / backbone / f"seed_{seed:04d}"
+                        command = [PYTHON, "scripts/06_run_primary_audit.py", "--model-config", config, "--checkpoint", str(self.output / "checkpoints" / backbone / f"seed_{seed:04d}/best.ckpt"), "--id-logits", str(self.output / "predictions" / backbone / f"seed_{seed:04d}/id_val.parquet"), "--triplets", str(combined), "--split", "val", "--seed", str(seed), "--device", device, "--output-dir", str(base), "--overwrite"]
+                        self.run(f"ladder_audit_{level}_{backbone}_{seed:04d}", command, [base / "directed_hcs.csv", base / "directed_hce.csv"], "robustness")
+                    ladder_jobs.append(ladder_job)
+            self.parallel(ladder_jobs)
         lesion = json.loads((self.output / "p0/data_integrity/alignment_report.json").read_text(encoding="utf-8"))
         lesion_available = str(lesion.get("status", "")).lower() in {"pass", "passed", "validated", "available"}
         lesion_root = self.output / "audits/lesion_aware"
         if lesion_available:
             lesion_matching = lesion_root / "matching"
             self.run("lesion_matching", [PYTHON, "scripts/03_run_matching.py", "--config", "configs/matching/lesion_aware.yaml", "--split", "val", "--output-dir", str(lesion_matching), "--overwrite"], [lesion_matching / "triplets.parquet"])
+            lesion_jobs = []
             for backbone, config in self.configs.items():
                 for seed in self.all_seeds:
-                    base = lesion_root / "val" / backbone / f"seed_{seed:04d}"
-                    command = [PYTHON, "scripts/06_run_primary_audit.py", "--model-config", config, "--checkpoint", str(self.output / "checkpoints" / backbone / f"seed_{seed:04d}/best.ckpt"), "--id-logits", str(self.output / "predictions" / backbone / f"seed_{seed:04d}/id_val.parquet"), "--triplets", str(lesion_matching / "triplets.parquet"), "--split", "val", "--seed", str(seed), "--device", self.devices[0], "--output-dir", str(base), "--overwrite"]
-                    self.run(f"lesion_audit_{backbone}_{seed:04d}", command, [base / "directed_hcs.csv", base / "directed_hce.csv"], "robustness")
+                    def lesion_job(device: str, backbone=backbone, config=config, seed=seed) -> None:
+                        base = lesion_root / "val" / backbone / f"seed_{seed:04d}"
+                        command = [PYTHON, "scripts/06_run_primary_audit.py", "--model-config", config, "--checkpoint", str(self.output / "checkpoints" / backbone / f"seed_{seed:04d}/best.ckpt"), "--id-logits", str(self.output / "predictions" / backbone / f"seed_{seed:04d}/id_val.parquet"), "--triplets", str(lesion_matching / "triplets.parquet"), "--split", "val", "--seed", str(seed), "--device", device, "--output-dir", str(base), "--overwrite"]
+                        self.run(f"lesion_audit_{backbone}_{seed:04d}", command, [base / "directed_hcs.csv", base / "directed_hce.csv"], "robustness")
+                    lesion_jobs.append(lesion_job)
+            self.parallel(lesion_jobs)
             save_json({"status": "completed"}, lesion_root / "status.json")
         else:
             save_json({"status": "unavailable", "reason": "annotation alignment unavailable"}, lesion_root / "status.json")
@@ -268,11 +289,15 @@ class FinalSuite:
         final_matching = self.output / "p0/matching_final_test"
         self.run("final_test_matching", [PYTHON, "scripts/03_run_matching.py", "--split", "test", "--allow-final-test", "--prior-triplets", str(self.output / "p0/matching/triplets.parquet"), "--output-dir", str(final_matching), "--overwrite"], [final_matching / "triplets.parquet"])
         self.run("merge_final_test_matching", [PYTHON, "scripts/merge_final_test_matching.py", "--primary", str(self.output / "p0/matching"), "--final-test", str(final_matching)], [self.output / "p0/matching/triplets.parquet", self.output / "p0/matching/feature_balance.csv", self.output / "p0/matching/final_matching_check.json"])
+        final_test_jobs = []
         for backbone, config in self.configs.items():
             for seed in self.all_seeds:
-                prediction = self.output / "predictions" / backbone / f"seed_{seed:04d}" / "ood_test.parquet"
-                self.run(f"predict_{backbone}_{seed:04d}_test", [PYTHON, "scripts/05_train_erm.py", "--config", config, "--seed", str(seed), "--device", self.devices[0], "--predictions-only", "--allow-final-test"], [prediction])
-                self.audit(backbone, config, seed, "test", final_matching / "triplets.parquet", self.devices[0])
+                def final_test_job(device: str, backbone=backbone, config=config, seed=seed) -> None:
+                    prediction = self.output / "predictions" / backbone / f"seed_{seed:04d}" / "ood_test.parquet"
+                    self.run(f"predict_{backbone}_{seed:04d}_test", [PYTHON, "scripts/05_train_erm.py", "--config", config, "--seed", str(seed), "--device", device, "--predictions-only", "--allow-final-test"], [prediction])
+                    self.audit(backbone, config, seed, "test", final_matching / "triplets.parquet", device)
+                final_test_jobs.append(final_test_job)
+        self.parallel(final_test_jobs)
         self.run("aggregate_final_test", [PYTHON, "scripts/12_aggregate_experiments.py", "--split", "test", "--audit-root", str(self.output / "audits/primary"), "--overwrite"], [self.output / "aggregate/primary/global_hcs.csv", self.output / "aggregate/final/MAIN_RESULTS.csv"])
         shutil.copy2(REPO / "docs/HF_DATASET_CARD.md", self.output / "README.md")
         save_json({"status": "ready_for_upload", "protocol_hash": (protocol_dir / "protocol_sha256.txt").read_text().strip(), "git_commit": commit, "artifact_manifest": "MANIFEST.json", "run_state": "logs/final_suite/final_run_state.json"}, self.output / "aggregate/final/experiment_manifest.json")
