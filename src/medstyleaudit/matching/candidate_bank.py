@@ -65,7 +65,15 @@ class CandidateBank:
         _, local = self._group_trees[key].query(np.asarray(vector, dtype=np.float64), k=count, workers=1)
         return positions[np.atleast_1d(local).astype(np.int64)]
 
-    def query_group_batch(self, hospital: int, label: int, split: str, vectors: np.ndarray, k: int) -> np.ndarray:
+    def query_group_batch(
+        self,
+        hospital: int,
+        label: int,
+        split: str,
+        vectors: np.ndarray,
+        k: int,
+        workers: int = 1,
+    ) -> np.ndarray:
         """Batch nearest-neighbor queries while retaining global frame positions."""
         key = self._key(hospital, label, split)
         positions = self._group_indices.get(key)
@@ -73,7 +81,7 @@ class CandidateBank:
         if positions is None or not len(positions) or k <= 0:
             return np.empty((len(vectors), 0), dtype=np.int64)
         count = min(int(k), len(positions))
-        _, local = self._group_trees[key].query(vectors, k=count, workers=1)
+        _, local = self._group_trees[key].query(vectors, k=count, workers=int(workers))
         local = np.asarray(local, dtype=np.int64)
         if count == 1:
             local = local[:, None]

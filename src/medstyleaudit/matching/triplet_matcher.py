@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 import numpy as np
 import pandas as pd
+from scipy.spatial.distance import cdist
 
 from .candidate_bank import CandidateBank
 from .distance import euclidean_to
@@ -23,10 +24,13 @@ class BalancedTripletMatcher:
     def _eligible_by_cap(self, frame: pd.DataFrame) -> pd.DataFrame:
         reuse_cap = int(self.config.get("donor_reuse_cap", 2**31 - 1))
         slide_cap = int(self.config.get("donor_slide_reuse_cap", 2**31 - 1))
-        mask = [
-            self.donor_reuse[row.source_id] < reuse_cap and self.donor_slide_reuse[row.slide_id] < slide_cap
-            for row in frame.itertuples()
-        ]
+        donor_ids = frame["source_id"].to_numpy()
+        slide_ids = frame["slide_id"].to_numpy()
+        mask = np.fromiter(
+            (self.donor_reuse[donor] < reuse_cap and self.donor_slide_reuse[slide] < slide_cap for donor, slide in zip(donor_ids, slide_ids)),
+            dtype=bool,
+            count=len(frame),
+        )
         return frame.loc[mask]
 
     def _nearest(self, source_vector: np.ndarray, frame: pd.DataFrame) -> pd.DataFrame:
@@ -58,16 +62,26 @@ class BalancedTripletMatcher:
 
         def eligible(positions: np.ndarray) -> pd.DataFrame:
             frame = self.bank.frame.iloc[positions]
-            mask = ~frame["physical_id"].astype(str).isin(excluded_physical_ids)
+            physical_ids = frame["physical_id"].astype(str).to_numpy()
+            if len(excluded_physical_ids) == 1:
+                mask = physical_ids != next(iter(excluded_physical_ids))
+            else:
+                mask = ~np.isin(physical_ids, list(excluded_physical_ids))
             if source_ids:
-                mask &= ~frame["source_id"].isin(source_ids)
+                candidate_source_ids = frame["source_id"].to_numpy()
+                if len(source_ids) == 1:
+                    mask &= candidate_source_ids != next(iter(source_ids))
+                else:
+                    mask &= ~np.isin(candidate_source_ids, list(source_ids))
             result = self._eligible_by_cap(frame.loc[mask])
             if result.empty:
                 return result.assign(__distance=pd.Series(dtype=float))
-            result = result.copy()
             z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
-            result["__distance"] = euclidean_to(source_vector, result[z_columns].to_numpy(float))
-            return result.sort_values(["__distance", "source_id"], kind="mergesort")
+            distances = euclidean_to(source_vector, result[z_columns].to_numpy(float))
+            order = np.lexsort((result["source_id"].astype(str).to_numpy(), distances))
+            result = result.iloc[order].copy()
+            result["__distance"] = distances[order]
+            return result
 
         while True:
             positions = initial_positions if initial_positions is not None else self.bank.query_group(hospital, label_value, split, source_vector, probe)
@@ -77,9 +91,10 @@ class BalancedTripletMatcher:
                 cutoff = float(result.iloc[pool - 1]["__distance"])
                 if probe < total:
                     tolerance = max(1e-12, abs(cutoff) * 1e-12)
-                    z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
-                    retrieved = self.bank.frame.iloc[positions]
-                    boundary = float(euclidean_to(source_vector, retrieved[z_columns].to_numpy(float)).max(initial=0.0))
+                    # The farthest eligible item is a conservative lower bound on
+                    # the probe boundary. It avoids a second distance pass in the
+                    # common case; a lower bound can only trigger a safe extra tie query.
+                    boundary = float(result["__distance"].max())
                     if cutoff + tolerance >= boundary:
                         tied_positions = self.bank.query_group_radius(hospital, label_value, split, source_vector, cutoff + tolerance)
                         result = eligible(tied_positions)
@@ -88,7 +103,7 @@ class BalancedTripletMatcher:
                 return result.head(pool)
             probe = min(total, probe * 2)
 
-    def _balanced_pair_candidates(self, within: pd.DataFrame, cross: pd.DataFrame) -> list[tuple[float, int, int, float]]:
+    def _balanced_pair_candidates(self, within: pd.DataFrame, cross: pd.DataFrame) -> Iterator[tuple[float, int, int, float]]:
         """Vectorize the fixed 64x64 pair costs while preserving deterministic ordering."""
         settings = self.config
         d_within = within["__distance"].to_numpy(float)
@@ -101,10 +116,10 @@ class BalancedTripletMatcher:
         for name, limit in settings.get("feature_calipers", {}).items():
             valid &= np.abs(within[name].to_numpy(float)[:, None] - cross[name].to_numpy(float)[None, :]) <= float(limit)
         if not valid.any():
-            return []
+            return
         z_columns = [f"__z_{column}" for column in self.bank.descriptor_columns]
         within_z, cross_z = within[z_columns].to_numpy(float), cross[z_columns].to_numpy(float)
-        pair_distance = np.linalg.norm(within_z[:, None, :] - cross_z[None, :, :], axis=2)
+        pair_distance = cdist(within_z, cross_z, metric="euclidean")
         cost = (
             d_within[:, None]
             + d_cross[None, :]
@@ -116,10 +131,9 @@ class BalancedTripletMatcher:
         cross_ids = cross["source_id"].astype(str).to_numpy()[cross_indices]
         candidate_costs = cost[within_indices, cross_indices]
         order = np.lexsort((cross_ids, within_ids, candidate_costs))
-        return [
-            (float(candidate_costs[index]), int(within_indices[index]), int(cross_indices[index]), float(pair_distance[within_indices[index], cross_indices[index]]))
-            for index in order
-        ]
+        for index in order:
+            within_index, cross_index = int(within_indices[index]), int(cross_indices[index])
+            yield float(candidate_costs[index]), within_index, cross_index, float(pair_distance[within_index, cross_index])
 
     def match_source(
         self,
@@ -219,7 +233,14 @@ class BalancedTripletMatcher:
         prefetch: dict[tuple[object, int, int, str], np.ndarray] = {}
         query_size = max(int(self.config.get("candidate_pool_size", 64)) * 2, 128)
         for (hospital, label_value, split), items in requests.items():
-            positions = self.bank.query_group_batch(hospital, label_value, split, np.stack([item[1] for item in items]), query_size)
+            positions = self.bank.query_group_batch(
+                hospital,
+                label_value,
+                split,
+                np.stack([item[1] for item in items]),
+                query_size,
+                workers=int(self.config.get("query_workers", 1)),
+            )
             for (source_id, _), row in zip(items, positions):
                 prefetch[(source_id, hospital, label_value, split)] = row
         return prefetch

@@ -17,7 +17,8 @@ matching:
   donor_reuse_cap: 20
   donor_slide_reuse_cap: 100
   candidate_pool_size: 64
-  query_batch_size: 512
+  query_batch_size: 4096
+  query_workers: -1
   min_donor_slide_diversity: 1
   target_hospitals:
     train: [0, 3, 4]
