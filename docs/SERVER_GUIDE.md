@@ -16,6 +16,17 @@ python scripts/hf_create_repository.py
 bash scripts/autodl_run_final_suite.sh
 ```
 
+If the instance has multiple GPUs, list them explicitly; the runner assigns at
+most one training subprocess to each device:
+
+```bash
+bash scripts/autodl_run_final_suite.sh --devices cuda:0 cuda:1 cuda:2 cuda:3
+```
+
+On a single RTX 2080 Ti, use the default command. Training uses AMP and optimized
+DataLoader settings automatically. Completed stages and completed planted-cue
+rho values are resumed without recomputation.
+
 The first run ends after validation aggregation with `final_test=locked`. Resume
 only after choosing to open the final test:
 

@@ -26,9 +26,20 @@ def build_model(config: Mapping[str, Any]):
     raise ValueError(f"Unknown architecture: {architecture}")
 
 
-def evaluate(model, loader, device, show_progress: bool = False, description: str = "evaluation"):
+def evaluate(
+    model,
+    loader,
+    device,
+    show_progress: bool = False,
+    description: str = "evaluation",
+    *,
+    amp: bool = False,
+    channels_last: bool = False,
+):
     import torch
     model.eval()
+    cuda = str(device).startswith("cuda") and torch.cuda.is_available()
+    amp_enabled = bool(amp) and cuda
     logits, labels, identifiers = [], [], []
     with torch.no_grad():
         iterator = loader
@@ -36,8 +47,12 @@ def evaluate(model, loader, device, show_progress: bool = False, description: st
             from tqdm.auto import tqdm
             iterator = tqdm(loader, total=len(loader), desc=description, unit="batch", leave=False)
         for batch in iterator:
-            images, targets = batch[0].to(device), batch[1].float().to(device)
-            output = model(images).reshape(-1)
+            images = batch[0].to(device, non_blocking=cuda)
+            if channels_last and images.ndim == 4:
+                images = images.contiguous(memory_format=torch.channels_last)
+            targets = batch[1].float().to(device, non_blocking=cuda)
+            with torch.cuda.amp.autocast(enabled=amp_enabled):
+                output = model(images).reshape(-1)
             logits.extend(output.cpu().numpy().tolist())
             labels.extend(targets.cpu().numpy().tolist())
             if len(batch) > 2:
@@ -55,10 +70,16 @@ def train(model, train_loader, validation_loader, config: Mapping[str, Any], out
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     settings = config["training"]
+    cuda = str(device).startswith("cuda") and torch.cuda.is_available()
+    amp_enabled = bool(settings.get("amp", False)) and cuda
+    channels_last = bool(settings.get("channels_last", False)) and cuda
     model.to(device)
+    if channels_last:
+        model.to(memory_format=torch.channels_last)
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(settings["learning_rate"]), weight_decay=float(settings.get("weight_decay", 0)))
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(int(settings["epochs"]), 1))
     criterion = torch.nn.BCEWithLogitsLoss()
+    scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
     start_epoch, best = 0, -float("inf") if settings.get("maximize_metric", True) else float("inf")
     resume = settings.get("resume")
     history = []
@@ -67,6 +88,8 @@ def train(model, train_loader, validation_loader, config: Mapping[str, Any], out
         model.load_state_dict(state["model"]); optimizer.load_state_dict(state["optimizer"])
         if "scheduler" in state:
             scheduler.load_state_dict(state["scheduler"])
+        if "scaler" in state:
+            scaler.load_state_dict(state["scaler"])
         start_epoch, best = int(state["epoch"]) + 1, float(state["best_metric"])
         metrics_path = directory / "metrics.csv"
         if metrics_path.is_file():
@@ -78,19 +101,43 @@ def train(model, train_loader, validation_loader, config: Mapping[str, Any], out
         model.train(); losses = []
         batches = tqdm(train_loader, total=len(train_loader), desc=f"train epoch {epoch + 1}", unit="batch", leave=False)
         for batch_index, batch in enumerate(batches):
-            images, targets = batch[0].to(device), batch[1].float().to(device)
+            images = batch[0].to(device, non_blocking=cuda)
+            if channels_last and images.ndim == 4:
+                images = images.contiguous(memory_format=torch.channels_last)
+            targets = batch[1].float().to(device, non_blocking=cuda)
             optimizer.zero_grad(set_to_none=True)
-            loss = criterion(model(images).reshape(-1), targets.reshape(-1)); loss.backward(); optimizer.step()
+            with torch.cuda.amp.autocast(enabled=amp_enabled):
+                loss = criterion(model(images).reshape(-1), targets.reshape(-1))
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             losses.append(float(loss.detach().cpu()))
             if max_batches is not None and batch_index + 1 >= max_batches:
                 break
-        metrics, predictions = evaluate(model, validation_loader, device, True, f"validate epoch {epoch + 1}")
+        metrics, predictions = evaluate(
+            model,
+            validation_loader,
+            device,
+            True,
+            f"validate epoch {epoch + 1}",
+            amp=amp_enabled,
+            channels_last=channels_last,
+        )
         record = {"epoch": epoch, "train_loss": np.mean(losses), "learning_rate": optimizer.param_groups[0]["lr"], **{f"val_{key}": value for key, value in metrics.items()}}
         history.append(record); save_table(pd.DataFrame(history), directory / "metrics.csv")
         selection = float(record[settings.get("selection_metric", "val_auroc")])
         improved = selection > best if settings.get("maximize_metric", True) else selection < best
         scheduler.step()
-        checkpoint = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(), "best_metric": selection if improved else best, "config": dict(config)}
+        checkpoint = {
+            "epoch": epoch,
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "scaler": scaler.state_dict(),
+            "best_metric": selection if improved else best,
+            "config": dict(config),
+            "precision": "amp_fp16" if amp_enabled else "fp32",
+        }
         torch.save(checkpoint, directory / "last.ckpt")
         if improved:
             best = selection; torch.save(checkpoint, directory / "best.ckpt")

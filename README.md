@@ -41,7 +41,9 @@ uploads skip checksum-identical files; verification fails on a mismatch.
 - Matching: three donors/source, `lambda_balance=2.0`, `lambda_pair=0.25`,
   `tau_distance=6.0`, `tau_balance=1.0`, candidate pool 64, donor cap 20.
 - Controls: ROI-only, context-randomized, planted shortcut at
-  `rho=[0,.25,.50,.75,1]`.
+  `rho=[0,.25,.50,.75,1]`. ROI-only is evaluated for all primary models; the
+  two controls that require new training use the predeclared ResNet-50 seed 42
+  calibration scope and are not repeated across all 20 primary runs.
 - Robustness: locked-triplet buffers `[0,4,8,16]`, hard versus primary feathered
   seam, and lesion-aware only when alignment is validated.
 - Identification ladder: levels 1–4 required; lesion-aware conditional.
@@ -52,6 +54,21 @@ controls and robustness; validation aggregation; explicit final-test unlock;
 hospital-2 matching/predictions/audits; final tables; HF upload and verification.
 Every stage has a completion marker and validated expected outputs. Re-running
 resumes completed stages; `--force` intentionally recomputes them.
+
+CUDA training uses deterministic FP16 AMP, channels-last tensors, pinned-memory
+workers, and persistent prefetching. Counterfactual inference batches multiple
+triplets per GPU call. On a multi-GPU server, independent primary runs can be
+scheduled with:
+
+```bash
+bash scripts/autodl_run_final_suite.sh --devices cuda:0 cuda:1 cuda:2 cuda:3
+```
+
+For manual primary-only sharding, run `python scripts/run_final_suite.py` with
+`--backbones` and/or `--seeds`. A shard stops after its validation audits and
+deliberately does not aggregate, open the final test, or upload. Do not use the
+AutoDL wrapper for a shard because the wrapper shuts the instance down after a
+successful command.
 
 ## Installation and tests
 

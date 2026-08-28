@@ -63,15 +63,16 @@ def main() -> None:
         save_table(pd.concat([read_table(path).assign(source_table=path.stem, number_expected_runs=1, number_completed_runs=1, missing_runs_detail="[]", status="complete", protocol_hash=protocol_hash, git_commit=commit) for path in matching_frames], ignore_index=True, sort=False), final / "MATCHING_RESULTS.csv")
 
     backbones, seeds = list(expected_runs), [int(seed) for seed in next(iter(expected_runs.values()))["seeds"]]
+    suite_config = load_config("configs/final/FINAL_SUITE.yaml")
+    control_backbone = str(suite_config["control_scope"]["backbone"])
+    control_seed = int(suite_config["control_scope"]["seed"])
     audit_dir = experiment_path("audits")
     control_expected = []
     for backbone in backbones:
         for run_seed in seeds:
-            control_expected.extend([
-                audit_dir / "roi_only/val" / backbone / f"seed_{run_seed:04d}/directed_hcs.csv",
-                audit_dir / "context_randomized" / backbone / f"seed_{run_seed:04d}/directed_hcs.csv",
-            ])
-            control_expected.extend(audit_dir / "planted_shortcut" / backbone / f"seed_{run_seed:04d}" / f"rho_{rho:.2f}/directed_hcs.csv" for rho in (0., .25, .5, .75, 1.))
+            control_expected.append(audit_dir / "roi_only/val" / backbone / f"seed_{run_seed:04d}/directed_hcs.csv")
+    control_expected.append(audit_dir / "context_randomized" / control_backbone / f"seed_{control_seed:04d}/directed_hcs.csv")
+    control_expected.extend(audit_dir / "planted_shortcut" / control_backbone / f"seed_{control_seed:04d}" / f"rho_{rho:.2f}/directed_hcs.csv" for rho in (0., .25, .5, .75, 1.))
     robustness_expected = []
     for backbone in backbones:
         for run_seed in seeds:

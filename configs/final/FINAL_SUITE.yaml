@@ -4,6 +4,9 @@ seeds: [11, 23, 42, 57, 71, 89, 101, 131, 173, 211]
 backbones:
   resnet50: configs/models/resnet50_hf.yaml
   densenet121: configs/models/densenet121_hf.yaml
+control_scope:
+  backbone: resnet50
+  seed: 42
 artifact_repository: ${MEDSTYLE_HF_REPO}
 preflight:
   repository: .

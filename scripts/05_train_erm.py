@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from medstyleaudit.data.wilds_loader import load_wilds_dataset
+from medstyleaudit.data.loading import loader_kwargs
 from medstyleaudit.models.trainer import build_model, evaluate, train
 from medstyleaudit.utils.cli import common_parser
 from medstyleaudit.utils.config import load_config
@@ -44,8 +45,9 @@ def main() -> None:
     if args.dry_run:
         train_indices, val_indices, id_val_indices = train_indices[:256], val_indices[:128], id_val_indices[:128]
     settings = config["training"]
-    train_loader = DataLoader(IndexedSplit(train_indices), batch_size=int(settings["batch_size"]), shuffle=True, num_workers=int(settings["num_workers"]))
-    val_loader = DataLoader(IndexedSplit(val_indices), batch_size=int(settings["batch_size"]), shuffle=False, num_workers=int(settings["num_workers"]))
+    data_loader_kwargs = loader_kwargs(settings, args.device)
+    train_loader = DataLoader(IndexedSplit(train_indices), shuffle=True, **data_loader_kwargs)
+    val_loader = DataLoader(IndexedSplit(val_indices), shuffle=False, **data_loader_kwargs)
     model = build_model(config)
     if args.predictions_only:
         if not args.allow_final_test:
@@ -59,16 +61,20 @@ def main() -> None:
         run = start_run(f"train_erm_{architecture}", config, output, seed, overwrite=args.overwrite)
         history = train(model, train_loader, val_loader, config, output, args.device, args.dry_run)
     best_state = torch.load(output / "best.ckpt", map_location=args.device); model.load_state_dict(best_state["model"])
-    _, id_predictions = evaluate(model, DataLoader(IndexedSplit(id_val_indices), batch_size=int(settings["batch_size"]), shuffle=False, num_workers=int(settings["num_workers"])), args.device, True, "ID validation predictions")
+    inference_options = {
+        "amp": bool(settings.get("amp", False)),
+        "channels_last": bool(settings.get("channels_last", False)),
+    }
+    _, id_predictions = evaluate(model, DataLoader(IndexedSplit(id_val_indices), shuffle=False, **data_loader_kwargs), args.device, True, "ID validation predictions", **inference_options)
     from medstyleaudit.utils.io import save_table
     predictions_dir = experiment_path(f"predictions/{architecture}/seed_{seed:04d}")
     id_predictions["split"] = "id_val"; save_table(id_predictions, predictions_dir / "id_val.parquet")
-    _, ood_predictions = evaluate(model, val_loader, args.device, True, "OOD validation predictions")
+    _, ood_predictions = evaluate(model, val_loader, args.device, True, "OOD validation predictions", **inference_options)
     save_table(ood_predictions.assign(split="ood_val"), predictions_dir / "ood_val.parquet")
     if args.predictions_only:
         from medstyleaudit.protocol import record_final_test_opened
-        test_loader = DataLoader(IndexedSplit(test_indices), batch_size=int(settings["batch_size"]), shuffle=False, num_workers=int(settings["num_workers"]))
-        _, final_predictions = evaluate(model, test_loader, args.device, True, "Final OOD test predictions")
+        test_loader = DataLoader(IndexedSplit(test_indices), shuffle=False, **data_loader_kwargs)
+        _, final_predictions = evaluate(model, test_loader, args.device, True, "Final OOD test predictions", **inference_options)
         save_table(final_predictions.assign(split="ood_test"), predictions_dir / "ood_test.parquet")
         marker = record_final_test_opened(experiment_path(""), f"predict-{architecture}-{seed:04d}")
         print(f"Final-test predictions written; opening record: {marker}")

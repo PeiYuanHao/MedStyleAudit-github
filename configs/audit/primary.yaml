@@ -10,6 +10,7 @@ audit:
   patch_size: 96
   source_buffer: 0
   feather_width: 4
+  inference_batch_size: 64
   q_min: 0.001
   bootstrap_draws: 2000
   confidence: 0.95

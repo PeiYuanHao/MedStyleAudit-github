@@ -39,15 +39,16 @@ def main() -> None:
         state = torch.load(args.checkpoint, map_location=args.device); model.load_state_dict(state["model"])
         transform = Compose([ToTensor(), Normalize(model_config["model"]["input_mean"], model_config["model"]["input_std"])])
         dataset = load_wilds_dataset({"data": {**model_config["data"], "download": False}})
+        primary_config = load_config("configs/audit/primary.yaml")
+        inference_batch_size = int(primary_config["audit"].get("inference_batch_size", 64))
         if not args.id_logits: raise ValueError("--id-logits is required when --checkpoint is supplied")
         id_table = read_table(args.id_logits); logit_column = "logit" if "logit" in id_table else "original_logit"
         all_sources = []
         for setting_index, setting in grid.iterrows():
             setting_dir = output / f"setting_{setting_index:03d}"
-            predictions, qa = infer_triplets(model, dataset, triplets, transform, device=args.device, source_buffer=int(setting.source_buffer), feather_width=int(setting.feather_width), show_progress=True)
+            predictions, qa = infer_triplets(model, dataset, triplets, transform, device=args.device, source_buffer=int(setting.source_buffer), feather_width=int(setting.feather_width), batch_size=inference_batch_size, show_progress=True)
             predictions["seed"] = seed; predictions["backbone"] = model_config["model"]["architecture"]
             save_table(predictions, setting_dir / "audit_records.parquet"); save_table(qa, setting_dir / "construction_qa.csv")
-            primary_config = load_config("configs/audit/primary.yaml")
             tables = aggregate_audit(predictions, id_table[logit_column], setting_dir, float(primary_config["audit"].get("q_min", .001)), int(primary_config["audit"].get("bootstrap_draws", 0)), seed, expected_pairs_for_split(primary_config, args.split))
             unavailable = [name for name in ("global_hcs_pair_weighted", "global_hcs_common_support", "global_hce_pair_weighted", "global_hce_common_support") if "status" in tables[name] and (tables[name]["status"] != "available").any()]
             if unavailable: raise RuntimeError(f"Robustness audit is missing a required directed hospital pair: {unavailable}")
