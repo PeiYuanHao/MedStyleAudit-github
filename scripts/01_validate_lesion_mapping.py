@@ -38,7 +38,8 @@ def main() -> None:
         run.complete(status="completed", lesion_mapping="unavailable"); return
     rows, alignment = [], []
     polygon_cache = {}
-    for record in eligible.itertuples(index=False):
+    from tqdm.auto import tqdm
+    for record in tqdm(eligible.itertuples(index=False), total=len(eligible), desc="Phase 1 lesion projection", unit="patch"):
         annotation_path = Path(record.annotation_path)
         if not annotation_path.is_file():
             continue

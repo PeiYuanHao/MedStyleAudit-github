@@ -26,7 +26,9 @@ def main() -> None:
     if args.dry_run: metadata = metadata.head(int(config["data"].get("dry_run_samples", 128)))
     mask_config = config.get("mask", {})
     rows, stability_rows = [], []
-    for count, record in enumerate(metadata.itertuples(index=False)):
+    from tqdm.auto import tqdm
+    records = tqdm(metadata.itertuples(index=False), total=len(metadata), desc="Phase 2 descriptors", unit="patch")
+    for count, record in enumerate(records):
         image, _, _ = dataset[int(record.source_id)]
         rgb = __import__("numpy").asarray(image.convert("RGB"))
         reference_mask = tissue_mask(rgb, mask_config); descriptor = mask_descriptor(reference_mask)

@@ -31,6 +31,7 @@ def infer_triplets(
     source_buffer: int = 0,
     feather_width: int = 4,
     roi_only_control: bool = False,
+    show_progress: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run a frozen model and return complete prediction and construction-QA ledgers."""
     import torch
@@ -38,7 +39,11 @@ def infer_triplets(
     model.to(device).eval()
     prediction_rows, qa_rows = [], []
     with torch.no_grad():
-        for record in triplets.itertuples(index=False):
+        records = triplets.itertuples(index=False)
+        if show_progress:
+            from tqdm.auto import tqdm
+            records = tqdm(records, total=len(triplets), desc="Counterfactual audit inference", unit="triplet")
+        for record in records:
             source = np.asarray(dataset[int(record.source_id)][0].convert("RGB"))
             within_donor = np.asarray(dataset[int(record.within_donor)][0].convert("RGB"))
             cross_donor = np.asarray(dataset[int(record.cross_donor)][0].convert("RGB"))

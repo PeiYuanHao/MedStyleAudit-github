@@ -125,10 +125,14 @@ class BalancedTripletMatcher:
                 self.donor_slide_reuse[slide] += 1
         return selected, None
 
-    def match(self, sources: pd.DataFrame, target_hospitals: Mapping[str, list[int]]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def match(self, sources: pd.DataFrame, target_hospitals: Mapping[str, list[int]], show_progress: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
         triplets, ledger = [], []
         ordered = sources.sort_values(["source_split", "source_hospital", "source_id"] if "source_split" in sources else ["split", "hospital_id", "source_id"])
-        for _, source in ordered.iterrows():
+        iterator = ordered.iterrows()
+        if show_progress:
+            from tqdm.auto import tqdm
+            iterator = tqdm(iterator, total=len(ordered), desc="Phase 3 balanced matching", unit="source")
+        for _, source in iterator:
             split = source.get("source_split", source["split"])
             source_hospital = int(source.get("source_hospital", source["hospital_id"]))
             for target in target_hospitals.get(str(split), []):

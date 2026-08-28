@@ -103,13 +103,18 @@ def build_patch_mapping(
     coordinate_level: int | None,
     orientation: str | None,
     coordinate_reference: str | None,
+    show_progress: bool = False,
 ) -> pd.DataFrame:
     """Build an explicit patch-to-WSI/XML ledger without inferred identities or coordinates."""
     coordinate_columns = ("x", "y") if {"x", "y"}.issubset(metadata) else ("x_coord", "y_coord")
     slide_lookup = slide_mapping.set_index("wilds_slide_id", drop=False) if "wilds_slide_id" in slide_mapping else pd.DataFrame()
     annotations = _annotation_candidates(annotation_root)
     rows = []
-    for record in metadata.to_dict("records"):
+    records = metadata.to_dict("records")
+    if show_progress:
+        from tqdm.auto import tqdm
+        records = tqdm(records, total=len(records), desc="Phase 0 patch mapping", unit="patch")
+    for record in records:
         slide_id = record.get("slide_id")
         matches = pd.DataFrame()
         if not slide_lookup.empty:

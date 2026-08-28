@@ -44,7 +44,7 @@ def main() -> None:
         all_sources = []
         for setting_index, setting in grid.iterrows():
             setting_dir = output / f"setting_{setting_index:03d}"
-            predictions, qa = infer_triplets(model, dataset, triplets, transform, device=args.device, source_buffer=int(setting.source_buffer), feather_width=int(setting.feather_width))
+            predictions, qa = infer_triplets(model, dataset, triplets, transform, device=args.device, source_buffer=int(setting.source_buffer), feather_width=int(setting.feather_width), show_progress=True)
             predictions["seed"] = seed; predictions["backbone"] = model_config["model"]["architecture"]
             save_table(predictions, setting_dir / "predictions.csv"); save_table(qa, setting_dir / "construction_qa.csv")
             tables = aggregate_audit(predictions, id_table[logit_column], setting_dir, float(config.get("audit", {}).get("q_min", .001)), int(config.get("audit", {}).get("bootstrap_draws", 0)), seed)

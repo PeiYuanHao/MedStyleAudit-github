@@ -35,7 +35,7 @@ def main() -> None:
     bank = CandidateBank.build(bank_frame, settings["descriptor_columns"])
     matcher = BalancedTripletMatcher(bank, settings)
     source_rows = bank.frame[bank.frame["source_id"].isin(source_frame["source_id"])]
-    triplets, ledger = matcher.match(source_rows, settings["target_hospitals"])
+    triplets, ledger = matcher.match(source_rows, settings["target_hospitals"], show_progress=True)
     ledger = annotate_common_support(ledger)
     if not triplets.empty:
         common_lookup = ledger.set_index(["source_split", "source_hospital", "target_hospital", "source_id"])["common_support"]

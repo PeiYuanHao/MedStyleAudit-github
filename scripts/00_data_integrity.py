@@ -24,11 +24,13 @@ def main() -> None:
     seed_everything(seed)
     metadata_path = config["data"].get("metadata_csv")
     frame = load_metadata_csv(metadata_path) if metadata_path else extract_metadata(load_wilds_dataset(config))
+    run.logger.info("metadata loaded: %d patches", len(frame))
     if args.dry_run:
         frame = frame.head(int(config["data"].get("dry_run_samples", 128))).copy()
         run.logger.info("dry run restricted to %d metadata rows", len(frame))
     save_table(metadata_summary(frame), output / "wilds_summary.csv")
     save_table(frame, output / "wilds_metadata.csv")
+    run.logger.info("metadata tables saved; building exact slide mapping")
     report = validate_integrity(frame, config)
     manifest_path = config["data"].get("slide_manifest_csv")
     wsi_root = Path(config["data"].get("camelyon17_wsi_root", ""))
@@ -58,8 +60,10 @@ def main() -> None:
         coordinate_level=patch_config.get("coordinate_level"),
         orientation=patch_config.get("orientation"),
         coordinate_reference=patch_config.get("coordinate_reference"),
+        show_progress=True,
     )
     save_table(patch_mapping, output / "patch_mapping.csv")
+    run.logger.info("patch mapping saved: %d records", len(patch_mapping))
     status_counts = patch_mapping["mapping_status"].value_counts(dropna=False).to_dict()
     report["patch_mapping"] = {
         "status": "PASS" if status_counts.get("mapped", 0) == len(patch_mapping) else "UNAVAILABLE",

@@ -26,12 +26,16 @@ def build_model(config: Mapping[str, Any]):
     raise ValueError(f"Unknown architecture: {architecture}")
 
 
-def evaluate(model, loader, device):
+def evaluate(model, loader, device, show_progress: bool = False, description: str = "evaluation"):
     import torch
     model.eval()
     logits, labels, identifiers = [], [], []
     with torch.no_grad():
-        for batch in loader:
+        iterator = loader
+        if show_progress:
+            from tqdm.auto import tqdm
+            iterator = tqdm(loader, total=len(loader), desc=description, unit="batch", leave=False)
+        for batch in iterator:
             images, targets = batch[0].to(device), batch[1].float().to(device)
             output = model(images).reshape(-1)
             logits.extend(output.cpu().numpy().tolist())
@@ -63,16 +67,19 @@ def train(model, train_loader, validation_loader, config: Mapping[str, Any], out
         start_epoch, best = int(state["epoch"]) + 1, float(state["best_metric"])
     history = []
     max_batches = int(settings.get("dry_run_batches", 2)) if dry_run else None
-    for epoch in range(start_epoch, 1 if dry_run else int(settings["epochs"])):
+    from tqdm.auto import tqdm
+    epochs = range(start_epoch, 1 if dry_run else int(settings["epochs"]))
+    for epoch in tqdm(epochs, desc="ERM epochs", unit="epoch"):
         model.train(); losses = []
-        for batch_index, batch in enumerate(train_loader):
+        batches = tqdm(train_loader, total=len(train_loader), desc=f"train epoch {epoch + 1}", unit="batch", leave=False)
+        for batch_index, batch in enumerate(batches):
             images, targets = batch[0].to(device), batch[1].float().to(device)
             optimizer.zero_grad(set_to_none=True)
             loss = criterion(model(images).reshape(-1), targets.reshape(-1)); loss.backward(); optimizer.step()
             losses.append(float(loss.detach().cpu()))
             if max_batches is not None and batch_index + 1 >= max_batches:
                 break
-        metrics, predictions = evaluate(model, validation_loader, device)
+        metrics, predictions = evaluate(model, validation_loader, device, True, f"validate epoch {epoch + 1}")
         record = {"epoch": epoch, "train_loss": np.mean(losses), "learning_rate": optimizer.param_groups[0]["lr"], **{f"val_{key}": value for key, value in metrics.items()}}
         history.append(record); save_table(pd.DataFrame(history), directory / "metrics.csv")
         selection = float(record[settings.get("selection_metric", "val_auroc")])

@@ -48,7 +48,7 @@ def main() -> None:
     model = build_model(config)
     history = train(model, train_loader, val_loader, config, output, args.device, args.dry_run)
     best_state = torch.load(output / "best.ckpt", map_location=args.device); model.load_state_dict(best_state["model"])
-    _, id_predictions = evaluate(model, DataLoader(IndexedSplit(id_val_indices), batch_size=int(settings["batch_size"]), shuffle=False, num_workers=int(settings["num_workers"])), args.device)
+    _, id_predictions = evaluate(model, DataLoader(IndexedSplit(id_val_indices), batch_size=int(settings["batch_size"]), shuffle=False, num_workers=int(settings["num_workers"])), args.device, True, "ID validation predictions")
     from medstyleaudit.utils.io import save_table
     id_predictions["split"] = "id_val"; save_table(id_predictions, output / "id_validation_predictions.csv")
     run.complete(status="completed", epochs_completed=len(history), best_checkpoint=str((output / "best.ckpt").resolve()))

@@ -36,7 +36,7 @@ def main() -> None:
     transform = Compose([ToTensor(), Normalize(model_config["model"]["input_mean"], model_config["model"]["input_std"])])
     dataset_config = {"data": {**model_config["data"], "download": False}}
     try:
-        predictions, qa = infer_triplets(model, load_wilds_dataset(dataset_config), triplets, transform, device=args.device, roi_size=int(config["audit"]["roi_size"]), source_buffer=int(config["audit"]["source_buffer"]), feather_width=int(config["audit"]["feather_width"]), roi_only_control=args.roi_only_control)
+        predictions, qa = infer_triplets(model, load_wilds_dataset(dataset_config), triplets, transform, device=args.device, roi_size=int(config["audit"]["roi_size"]), source_buffer=int(config["audit"]["source_buffer"]), feather_width=int(config["audit"]["feather_width"]), roi_only_control=args.roi_only_control, show_progress=True)
     except ROIIdentityError as error:
         save_table(error.qa, output / "construction_qa.csv")
         save_json({"status": "failed", "reason": str(error)}, output / "roi_qa_failure.json")
