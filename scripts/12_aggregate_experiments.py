@@ -90,7 +90,7 @@ def main() -> None:
     expected_pairs = expected_pairs_for_split(config, split)
     audit_root = experiment_path("audits") / population
 
-    global_hcs, global_hce, individual_seeds = [], [], []
+    global_hcs, global_hce, global_intervals, directed_intervals, individual_seeds = [], [], [], [], []
     primary_outputs = {}
     for setting in PRIMARY_TABLE_SETTINGS:
         setting_output = output / setting
@@ -109,6 +109,10 @@ def main() -> None:
             global_hcs.append(frame)
         for frame in primary_outputs[setting]["combined_global_hce"].assign(setting=setting, population=population).to_dict("records"):
             global_hce.append(frame)
+        if not primary_outputs[setting]["combined_global_intervals"].empty:
+            global_intervals.append(primary_outputs[setting]["combined_global_intervals"].assign(setting=setting, population=population))
+        if not primary_outputs[setting]["combined_directed_intervals"].empty:
+            directed_intervals.append(primary_outputs[setting]["combined_directed_intervals"].assign(setting=setting, population=population))
         seed_table = pd.concat(
             [
                 primary_outputs[setting]["combined_directed_hcs"].assign(metric="directed_hcs", setting=setting, population=population),
@@ -121,6 +125,8 @@ def main() -> None:
 
     save_table(pd.DataFrame(global_hcs) if global_hcs else pd.DataFrame(), output / "global_hcs.csv")
     save_table(pd.DataFrame(global_hce) if global_hce else pd.DataFrame(), output / "global_hce.csv")
+    save_table(pd.concat(global_intervals, ignore_index=True, sort=False) if global_intervals else pd.DataFrame(), output / "global_intervals.csv")
+    save_table(pd.concat(directed_intervals, ignore_index=True, sort=False) if directed_intervals else pd.DataFrame(), output / "directed_intervals.csv")
     if individual_seeds:
         save_table(pd.concat(individual_seeds, ignore_index=True, sort=False), output / "INDIVIDUAL_SEEDS.csv")
 

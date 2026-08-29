@@ -13,6 +13,7 @@ from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import read_table, save_table
 from medstyleaudit.utils.io import save_json
 from medstyleaudit.utils.paths import experiment_path
+from medstyleaudit.utils.cli import enforce_final_test_guard
 
 
 def main() -> None:
@@ -20,7 +21,9 @@ def main() -> None:
     parser.add_argument("--primary", type=Path, default=None)
     parser.add_argument("--final-test", type=Path, default=None)
     parser.add_argument("--config", default="configs/matching/primary.yaml")
+    parser.add_argument("--allow-final-test", action="store_true")
     args = parser.parse_args()
+    enforce_final_test_guard("test", args.allow_final_test)
     primary = args.primary or experiment_path("p0/matching")
     final_test = args.final_test or experiment_path("p0/matching_final_test")
     config = load_config(args.config); features = list(config["matching"]["descriptor_columns"])

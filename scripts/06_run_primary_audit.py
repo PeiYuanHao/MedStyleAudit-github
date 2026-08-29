@@ -24,11 +24,14 @@ def main() -> None:
     architecture = model_config["model"]["architecture"]
     output_root = experiment_path("audits/roi_only") if args.roi_only_control else experiment_path("audits/primary")
     output = args.output_dir or output_root / architecture / f"seed_{seed:04d}" / split
+    triplet_path = args.triplets or Path(config["data"]["triplets"])
     config["checkpoint"] = str(args.checkpoint)
     config.setdefault("data", {})["version"] = model_config.get("data", {}).get("version")
+    config["data"]["triplets"] = str(triplet_path)
+    config["roi_only_control"] = bool(args.roi_only_control)
     config["model_architecture"] = architecture
     run = start_run("primary_audit", config, output, seed, overwrite=args.overwrite)
-    triplets = read_table(args.triplets or config["data"]["triplets"]); triplets = triplets[triplets["source_split"] == split]
+    triplets = read_table(triplet_path); triplets = triplets[triplets["source_split"] == split]
     if args.dry_run: triplets = triplets.head(8)
     if triplets.empty: raise RuntimeError(f"No accepted triplets for split={split}")
     import torch
@@ -47,8 +50,17 @@ def main() -> None:
     save_table(predictions, output / "audit_records.parquet"); save_table(qa, output / "construction_qa.csv")
     id_path = args.id_logits or Path(config["data"]["id_validation_logits"]); id_table = read_table(id_path)
     logit_column = "logit" if "logit" in id_table else "original_logit"
-    save_json({"checkpoint": str(args.checkpoint), "split": split, "id_logit_file": str(id_path), "id_logit_column": logit_column}, output / "audit_inputs.json")
-    tables = aggregate_audit(predictions, id_table[logit_column], output, float(config["audit"]["q_min"]), int(config["audit"].get("bootstrap_draws", 0)), seed, expected_pairs_for_split(config, split))
+    save_json({"checkpoint": str(args.checkpoint), "triplet_file": str(triplet_path), "split": split, "id_logit_file": str(id_path), "id_logit_column": logit_column, "roi_only_control": bool(args.roi_only_control)}, output / "audit_inputs.json")
+    tables = aggregate_audit(
+        predictions,
+        id_table[logit_column],
+        output,
+        float(config["audit"]["q_min"]),
+        int(config["audit"].get("bootstrap_draws", 0)),
+        seed,
+        expected_pairs_for_split(config, split),
+        confidence=float(config["audit"].get("confidence", 0.95)),
+    )
     unavailable = [name for name in ("global_hcs_pair_weighted", "global_hcs_common_support", "global_hce_pair_weighted", "global_hce_common_support") if "status" in tables[name] and (tables[name]["status"] != "available").any()]
     if unavailable:
         run.complete(status="failed", reason="missing expected directed pair", unavailable_tables=unavailable)

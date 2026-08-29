@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from medstyleaudit.utils.io import save_table
-from medstyleaudit.statistics.bootstrap import crossed_multiplier_bootstrap
+from medstyleaudit.statistics.bootstrap import crossed_multiplier_bootstrap, crossed_multiplier_grouped_bootstrap
 from .hce import common_support_hce, directed_hce, pair_weighted_hce
 from .hcs import common_support_hcs, directed_hcs, pair_weighted_hcs
 from .metrics import donor_pair_metrics, fit_logit_normalizer, source_metrics
@@ -41,6 +41,7 @@ def aggregate_audit(
     bootstrap_draws: int = 0,
     bootstrap_seed: int = 42,
     expected_pairs: set[tuple[int, int]] | None = None,
+    confidence: float = 0.95,
 ) -> dict[str, pd.DataFrame]:
     normalizer = fit_logit_normalizer(id_logits.to_numpy(), q_min)
     sources = source_metrics(predictions, normalizer)
@@ -62,7 +63,7 @@ def aggregate_audit(
         for keys, group in pairs.groupby(interval_keys, dropna=False):
             base = dict(zip(interval_keys, keys if isinstance(keys, tuple) else (keys,)))
             for metric, column in [("hcs", "HCS_pair"), ("hce", "HCE_pair")]:
-                result = crossed_multiplier_bootstrap(group, column, cluster_columns, bootstrap_draws, bootstrap_seed)
+                result = crossed_multiplier_bootstrap(group, column, cluster_columns, bootstrap_draws, bootstrap_seed, confidence)
                 interval_rows.append({**base, "metric": metric, **result, "cluster_columns": ";".join(cluster_columns)})
     outputs["directed_intervals"] = pd.DataFrame(interval_rows)
     outputs["global_hcs_pair_weighted"] = pair_weighted_hcs(outputs["directed_hcs"], expected_pairs)
@@ -70,6 +71,39 @@ def aggregate_audit(
     outputs["global_hcs_common_support"] = common_support_hcs(sources, targets)
     outputs["global_hce_pair_weighted"] = pair_weighted_hce(outputs["directed_hce"], expected_pairs)
     outputs["global_hce_common_support"] = common_support_hce(sources, targets)
+    global_interval_rows = []
+    if bootstrap_draws > 0:
+        global_keys = [column for column in ["source_split", "seed", "backbone"] if column in pairs]
+        grouped_runs = pairs.groupby(global_keys, dropna=False) if global_keys else [((), pairs)]
+        for keys, run_pairs in grouped_runs:
+            base = dict(zip(global_keys, keys if isinstance(keys, tuple) else (keys,)))
+            for summary_type, summary_pairs in (
+                ("pair_weighted", run_pairs),
+                ("common_support", run_pairs[run_pairs["common_support"].astype(bool)] if "common_support" in run_pairs else run_pairs),
+            ):
+                observed = set(zip(summary_pairs["source_hospital"].astype(int), summary_pairs["target_hospital"].astype(int)))
+                available = not summary_pairs.empty and (expected_pairs is None or observed == expected_pairs)
+                for metric, column in (("hcs", "HCS_pair"), ("hce", "HCE_pair")):
+                    if available:
+                        result = crossed_multiplier_grouped_bootstrap(
+                            summary_pairs,
+                            column,
+                            cluster_columns,
+                            ["source_hospital", "target_hospital"],
+                            bootstrap_draws,
+                            bootstrap_seed,
+                            confidence,
+                        )
+                    else:
+                        result = {"status": "unavailable", "n": len(summary_pairs)}
+                    global_interval_rows.append({
+                        **base,
+                        "summary_type": summary_type,
+                        "metric": metric,
+                        **result,
+                        "cluster_columns": ";".join(cluster_columns),
+                    })
+    outputs["global_intervals"] = pd.DataFrame(global_interval_rows)
     directory = Path(output_dir)
     for name, table in outputs.items():
         save_table(table, directory / f"{name}.csv")

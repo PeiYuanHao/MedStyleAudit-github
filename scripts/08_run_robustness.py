@@ -9,7 +9,7 @@ from medstyleaudit.audit.directed import aggregate_audit, expected_pairs_for_spl
 from medstyleaudit.audit.inference import infer_triplets
 from medstyleaudit.data.wilds_loader import load_wilds_dataset
 from medstyleaudit.models.trainer import build_model
-from medstyleaudit.utils.cli import common_parser
+from medstyleaudit.utils.cli import common_parser, enforce_final_test_guard
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import read_table, save_table
 from medstyleaudit.utils.run_metadata import start_run
@@ -20,9 +20,9 @@ def main() -> None:
     parser = common_parser("Run robustness grid using locked triplets", "configs/audit/source_buffer.yaml"); parser.add_argument("--triplets", type=Path, default=None); parser.add_argument("--checkpoint", type=Path, default=None); parser.add_argument("--model-config", default="configs/models/resnet50.yaml"); parser.add_argument("--id-logits", type=Path, default=None); parser.add_argument("--split", default="val")
     args = parser.parse_args(); config = load_config(args.config); seed = args.seed if args.seed is not None else int(config.get("seed", 42)); output = args.output_dir or configured_output(config, "robustness")
     triplet_path = args.triplets or experiment_path("p0/matching/triplets.parquet")
+    enforce_final_test_guard(args.split, args.allow_final_test)
     run = start_run(config.get("experiment", "robustness"), config, output, seed, overwrite=args.overwrite)
     triplets = read_table(triplet_path); triplets = triplets[triplets["source_split"] == args.split]
-    if args.split == "test" and not args.allow_final_test: raise PermissionError("Final hospital-2 evaluation requires --allow-final-test")
     if args.dry_run: triplets = triplets.head(8)
     settings = config["audit"]; rows = []
     buffers = settings.get("source_buffers", [0]); modes = settings.get("boundary_modes", ["feathered"]); widths = settings.get("feather_widths", [settings.get("feather_width", 4)])
@@ -31,11 +31,25 @@ def main() -> None:
             for width in widths:
                 effective = 0 if mode == "hard" else int(width)
                 rows.append({"source_buffer": int(buffer), "intervention_area_ratio": intervention_area_ratio((96, 96), 32, int(buffer)), "boundary_mode": mode, "feather_width": effective, "triplet_file": str(triplet_path), "n_locked_triplets": len(triplets), "status": "pending_inference"})
-    grid = pd.DataFrame(rows).drop_duplicates(); save_table(grid, output / "robustness_grid.csv")
+    grid = pd.DataFrame(rows).drop_duplicates()
+    if args.split in {"test", "ood_test"}:
+        from medstyleaudit.protocol import assert_frozen_execution_config
+        primary_config = load_config("configs/audit/primary.yaml")
+        assert_frozen_execution_config(audit=primary_config["audit"], seed=seed)
+        for setting in grid.itertuples(index=False):
+            assert_frozen_execution_config(robustness={
+                "source_buffer": int(setting.source_buffer),
+                "boundary_mode": setting.boundary_mode,
+                "feather_width": int(setting.feather_width),
+            })
+    save_table(grid, output / "robustness_grid.csv")
     if args.checkpoint:
         import torch
         from torchvision.transforms import Compose, Normalize, ToTensor
-        model_config = load_config(args.model_config); model = build_model(model_config)
+        model_config = load_config(args.model_config)
+        if args.split in {"test", "ood_test"}:
+            assert_frozen_execution_config(model=model_config, seed=seed)
+        model = build_model(model_config)
         state = torch.load(args.checkpoint, map_location=args.device); model.load_state_dict(state["model"])
         transform = Compose([ToTensor(), Normalize(model_config["model"]["input_mean"], model_config["model"]["input_std"])])
         dataset = load_wilds_dataset({"data": {**model_config["data"], "download": False}})
@@ -49,7 +63,16 @@ def main() -> None:
             predictions, qa = infer_triplets(model, dataset, triplets, transform, device=args.device, source_buffer=int(setting.source_buffer), feather_width=int(setting.feather_width), batch_size=inference_batch_size, show_progress=True)
             predictions["seed"] = seed; predictions["backbone"] = model_config["model"]["architecture"]
             save_table(predictions, setting_dir / "audit_records.parquet"); save_table(qa, setting_dir / "construction_qa.csv")
-            tables = aggregate_audit(predictions, id_table[logit_column], setting_dir, float(primary_config["audit"].get("q_min", .001)), int(primary_config["audit"].get("bootstrap_draws", 0)), seed, expected_pairs_for_split(primary_config, args.split))
+            tables = aggregate_audit(
+                predictions,
+                id_table[logit_column],
+                setting_dir,
+                float(primary_config["audit"].get("q_min", .001)),
+                int(primary_config["audit"].get("bootstrap_draws", 0)),
+                seed,
+                expected_pairs_for_split(primary_config, args.split),
+                confidence=float(primary_config["audit"].get("confidence", 0.95)),
+            )
             unavailable = [name for name in ("global_hcs_pair_weighted", "global_hcs_common_support", "global_hce_pair_weighted", "global_hce_common_support") if "status" in tables[name] and (tables[name]["status"] != "available").any()]
             if unavailable: raise RuntimeError(f"Robustness audit is missing a required directed hospital pair: {unavailable}")
             source_table = tables["source_metrics"].copy()

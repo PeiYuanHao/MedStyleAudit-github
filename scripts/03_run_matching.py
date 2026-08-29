@@ -19,12 +19,14 @@ def main() -> None:
     parser.add_argument("--prior-triplets", type=Path, default=None, help="Locked earlier triplets whose donor reuse must carry forward")
     args = parser.parse_args(); config = load_config(args.config)
     seed = args.seed if args.seed is not None else int(config.get("seed", 42)); output = args.output_dir or configured_output(config, "matching")
-    run = start_run("balanced_matching", config, output, seed, overwrite=args.overwrite)
-    frame = read_table(config["data"]["descriptors"])
     settings = config["matching"]
-    if args.split in {"test", "ood_test"}:
+    final_test_requested = args.split in {"test", "ood_test"} or (args.split is None and args.allow_final_test)
+    if final_test_requested:
         from medstyleaudit.protocol import assert_frozen_execution_config
         assert_frozen_execution_config(matching=settings)
+        enforce_final_test_guard("test", args.allow_final_test)
+    run = start_run("balanced_matching", config, output, seed, overwrite=args.overwrite)
+    frame = read_table(config["data"]["descriptors"])
     if settings.get("require_validated_lesion_mapping"):
         import json
         from medstyleaudit.utils.paths import experiment_path
@@ -41,7 +43,7 @@ def main() -> None:
         settings["descriptor_columns"] = list(settings["descriptor_columns"]) + list(settings.get("lesion_columns", []))
     source_frame = frame
     if args.split:
-        enforce_final_test_guard(args.split, args.allow_final_test); source_frame = frame[frame["split"] == args.split]
+        source_frame = frame[frame["split"] == args.split]
     elif not args.allow_final_test:
         source_frame = frame[frame["split"] != "test"]
     if args.dry_run:

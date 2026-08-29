@@ -219,16 +219,19 @@ class BalancedTripletMatcher:
         rows = self._balanced_pair_candidates(within, cross)
         selected, used_within, used_cross = [], set(), set()
         used_within_slides, used_cross_slides = set(), set()
-        enforce_within_slide_diversity = within["slide_id"].nunique() >= k_required
-        enforce_cross_slide_diversity = cross["slide_id"].nunique() >= k_required
+        required_slide_diversity = int(settings.get("min_donor_slide_diversity", 1))
+        if required_slide_diversity < 1 or required_slide_diversity > k_required:
+            raise ValueError("min_donor_slide_diversity must be between 1 and donors_per_source")
+        if within["slide_id"].nunique() < required_slide_diversity or cross["slide_id"].nunique() < required_slide_diversity:
+            return [], "insufficient_donor_slide_diversity"
         slide_cap = int(settings.get("donor_slide_reuse_cap", 2**31 - 1))
         for cost, within_index, cross_index, pair_distance in rows:
             within_row, cross_row = within.iloc[within_index], cross.iloc[cross_index]
             if within_row["source_id"] in used_within or cross_row["source_id"] in used_cross:
                 continue
-            if enforce_within_slide_diversity and within_row["slide_id"] in used_within_slides:
+            if len(used_within_slides) < required_slide_diversity and within_row["slide_id"] in used_within_slides:
                 continue
-            if enforce_cross_slide_diversity and cross_row["slide_id"] in used_cross_slides:
+            if len(used_cross_slides) < required_slide_diversity and cross_row["slide_id"] in used_cross_slides:
                 continue
             if self.donor_slide_reuse[within_row["slide_id"]] + sum(item["within_slide"] == within_row["slide_id"] for item in selected) >= slide_cap:
                 continue

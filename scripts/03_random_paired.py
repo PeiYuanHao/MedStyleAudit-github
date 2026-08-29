@@ -44,6 +44,19 @@ def main() -> None:
         if not selected.empty:
             parts.append(selected)
     triplets = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    expected_sources = set(sources["source_id"])
+    if triplets.empty:
+        raise RuntimeError("Random Paired produced no triplets for the fixed audit subset")
+    counts = triplets.groupby(["source_id", "target_hospital"]).size()
+    expected_keys = {(source_id, target) for source_id in expected_sources for target in targets}
+    observed_keys = set(counts.index.tolist())
+    incomplete = sorted(key for key in expected_keys if key not in observed_keys or int(counts.loc[key]) != int(settings["donors_per_source"]))
+    unexpected = sorted(observed_keys - expected_keys)
+    if incomplete or unexpected:
+        raise RuntimeError(
+            "Random Paired must retain the complete fixed source-by-target subset; "
+            f"incomplete={incomplete[:20]}, unexpected={unexpected[:20]}"
+        )
     if not triplets.empty:
         lookup = bank.frame.drop_duplicates("source_id").set_index("source_id")
         triplets = triplets.reset_index(drop=True)

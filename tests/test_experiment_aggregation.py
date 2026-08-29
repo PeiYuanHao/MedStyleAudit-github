@@ -19,6 +19,7 @@ def _write_run(root, architecture, seed, audit_config):
         "global_hce_pair_weighted": pd.DataFrame({"source_split": ["val"], "seed": [seed], "backbone": [architecture], "status": ["available"], "hce_pair_weighted": [-0.1]}),
         "global_hce_common_support": pd.DataFrame({"source_split": ["val"], "seed": [seed], "backbone": [architecture], "hce_common_support": [-0.1]}),
         "directed_intervals": pd.DataFrame({**base, "metric": ["hcs"], "estimate": [0.2]}),
+        "global_intervals": pd.DataFrame({"source_split": ["val"], "seed": [seed], "backbone": [architecture], "summary_type": ["pair_weighted"], "metric": ["hcs"], "estimate": [0.2]}),
     }
     assert set(tables) == set(RUN_TABLES)
     for name, table in tables.items(): table.to_csv(directory / f"{name}.csv", index=False)

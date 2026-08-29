@@ -68,16 +68,30 @@ class FinalSuite:
             self.state["updated_at"] = datetime.now(timezone.utc).isoformat()
             save_json(self.state, self.state_path)
 
-    def completed(self, name: str, outputs: list[Path], validity: Callable[[], bool] | None = None) -> bool:
+    def completed(
+        self,
+        name: str,
+        outputs: list[Path],
+        validity: Callable[[], bool] | None = None,
+        command: list[str] | None = None,
+    ) -> bool:
         marker = self.stage_root / f"{name}.json"
         if self.args.force or not marker.is_file() or not all(path.exists() for path in outputs):
             return False
-        if json.loads(marker.read_text(encoding="utf-8")).get("status") != "completed":
+        metadata = json.loads(marker.read_text(encoding="utf-8"))
+        if metadata.get("status") != "completed":
             return False
+        if command is not None:
+            commit, dirty = git_state(REPO)
+            tracked_hash = (REPO / "configs/final/protocol_sha256.txt").read_text(encoding="utf-8").strip()
+            if dirty or metadata.get("git_commit") != commit:
+                return False
+            if metadata.get("protocol_hash") != tracked_hash or metadata.get("command") != command:
+                return False
         return validity is None or bool(validity())
 
     def run(self, name: str, command: list[str], outputs: list[Path], summary: str | None = None, validity: Callable[[], bool] | None = None) -> None:
-        if self.completed(name, outputs, validity):
+        if self.completed(name, outputs, validity, command):
             print(f"[resume] {name}")
             return
         with self.state_lock:
@@ -97,7 +111,17 @@ class FinalSuite:
                     self.state[summary] = "failed"
                 self.save_state()
             raise RuntimeError(f"Stage {name} failed; see {log_path}")
-        save_json({"stage": name, "status": "completed", "command": command, "outputs": [str(path) for path in outputs], "completed_at": datetime.now(timezone.utc).isoformat()}, self.stage_root / f"{name}.json")
+        commit, _ = git_state(REPO)
+        tracked_hash = (REPO / "configs/final/protocol_sha256.txt").read_text(encoding="utf-8").strip()
+        save_json({
+            "stage": name,
+            "status": "completed",
+            "command": command,
+            "outputs": [str(path) for path in outputs],
+            "git_commit": commit,
+            "protocol_hash": tracked_hash,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }, self.stage_root / f"{name}.json")
         with self.state_lock:
             self.state["stages"][name] = "completed"
             if summary:
@@ -175,7 +199,13 @@ class FinalSuite:
         if split == "test":
             command.append("--allow-final-test")
         command.append("--overwrite")
-        outputs = [base / "directed_hcs.csv", base / "directed_hce.csv", base / "audit_records.parquet"]
+        outputs = [
+            base / "directed_hcs.csv",
+            base / "directed_hce.csv",
+            base / "directed_intervals.csv",
+            base / "global_intervals.csv",
+            base / "audit_records.parquet",
+        ]
         self.run(f"audit_{population}_{setting}_{seed:04d}", command, outputs, f"{population}_audit")
 
     def robustness_audit(self, population: str, setting: str, seed: int, triplets: Path, device: str) -> None:
@@ -210,7 +240,12 @@ class FinalSuite:
         if POPULATIONS[population] == "test":
             command.append("--allow-final-test")
         output = self.output / "aggregate" / population
-        self.run(f"aggregate_{population}", command, [output / "run_completeness.csv", output / "global_hcs.csv"], f"{population}_aggregate")
+        self.run(
+            f"aggregate_{population}",
+            command,
+            [output / "run_completeness.csv", output / "global_hcs.csv", output / "global_intervals.csv", output / "directed_intervals.csv"],
+            f"{population}_aggregate",
+        )
 
     def assemble_final(self, protocol_dir: Path, commit: str) -> None:
         import pandas as pd
@@ -226,7 +261,7 @@ class FinalSuite:
                     frames.append(pd.read_csv(path))
             return pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
 
-        for name in ("global_hcs", "global_hce", "INDIVIDUAL_SEEDS", "run_completeness", "robustness_by_seed", "matching_results"):
+        for name in ("global_hcs", "global_hce", "global_intervals", "directed_intervals", "INDIVIDUAL_SEEDS", "run_completeness", "robustness_by_seed", "matching_results"):
             frame = read_all(name)
             if not frame.empty:
                 frame.to_csv(final / f"{name}.csv", index=False)
@@ -247,6 +282,12 @@ class FinalSuite:
         individual = read_all("INDIVIDUAL_SEEDS")
         if not individual.empty:
             individual.to_csv(final / "INDIVIDUAL_SEEDS.csv", index=False)
+        global_interval_table = read_all("global_intervals")
+        if not global_interval_table.empty:
+            global_interval_table.to_csv(final / "GLOBAL_INTERVALS.csv", index=False)
+        directed_interval_table = read_all("directed_intervals")
+        if not directed_interval_table.empty:
+            directed_interval_table.to_csv(final / "DIRECTED_INTERVALS.csv", index=False)
         save_json({"status": "ready_for_upload", "protocol_hash": protocol_hash, "git_commit": commit, "artifact_manifest": "MANIFEST.json", "run_state": "logs/final_suite/final_run_state.json"}, final / "experiment_manifest.json")
 
     def execute(self) -> None:
@@ -297,7 +338,8 @@ class FinalSuite:
         hospital1_jobs = []
         for seed in self.seeds:
             for setting in PRIMARY_SETTINGS:
-                hospital1_jobs.append((lambda device, seed=seed, setting=setting: self.primary_audit("hospital1", setting, seed, hospital1_triplets, device)))
+                setting_triplets = self.output / "audits" / "hospital1" / "random_paired" / "triplets.parquet" if setting == "random_paired" else hospital1_triplets
+                hospital1_jobs.append((lambda device, seed=seed, setting=setting, triplets=setting_triplets: self.primary_audit("hospital1", setting, seed, triplets, device)))
             for setting in ROBUSTNESS_SETTINGS:
                 hospital1_jobs.append((lambda device, seed=seed, setting=setting: self.robustness_audit("hospital1", setting, seed, hospital1_triplets, device)))
         self.parallel(hospital1_jobs)
@@ -314,7 +356,7 @@ class FinalSuite:
         self.save_state()
 
         self.run("final_test_matching", [PYTHON, "scripts/03_run_matching.py", "--split", "test", "--allow-final-test", "--prior-triplets", str(self.output / "p0/matching/triplets.parquet"), "--output-dir", str(self.output / "p0/matching_final_test"), "--overwrite"], [self.output / "p0/matching_final_test/triplets.parquet"])
-        self.run("merge_final_test_matching", [PYTHON, "scripts/merge_final_test_matching.py"], [self.output / "p0/matching/triplets.parquet", self.output / "p0/matching/feature_balance.csv", self.output / "p0/matching/final_matching_check.json"])
+        self.run("merge_final_test_matching", [PYTHON, "scripts/merge_final_test_matching.py", "--allow-final-test"], [self.output / "p0/matching/triplets.parquet", self.output / "p0/matching/feature_balance.csv", self.output / "p0/matching/final_matching_check.json"])
         self.build_subset("hospital2")
         self.build_random_paired("hospital2")
 
@@ -330,7 +372,8 @@ class FinalSuite:
         hospital2_jobs = []
         for seed in self.seeds:
             for setting in PRIMARY_SETTINGS:
-                hospital2_jobs.append((lambda device, seed=seed, setting=setting: self.primary_audit("hospital2", setting, seed, hospital2_triplets, device)))
+                setting_triplets = self.output / "audits" / "hospital2" / "random_paired" / "triplets.parquet" if setting == "random_paired" else hospital2_triplets
+                hospital2_jobs.append((lambda device, seed=seed, setting=setting, triplets=setting_triplets: self.primary_audit("hospital2", setting, seed, triplets, device)))
             for setting in ROBUSTNESS_SETTINGS:
                 hospital2_jobs.append((lambda device, seed=seed, setting=setting: self.robustness_audit("hospital2", setting, seed, hospital2_triplets, device)))
         self.parallel(hospital2_jobs)

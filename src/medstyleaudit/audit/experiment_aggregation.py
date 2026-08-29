@@ -20,6 +20,7 @@ RUN_TABLES = (
     "global_hce_pair_weighted",
     "global_hce_common_support",
     "directed_intervals",
+    "global_intervals",
 )
 
 
@@ -168,6 +169,7 @@ def aggregate_experiment_runs(
         "combined_global_hce": global_hce,
         "combined_coverage": _combine(coverage_frames),
         "combined_directed_intervals": _combine(collected["directed_intervals"]),
+        "combined_global_intervals": _combine(collected["global_intervals"]),
         "seed_stability": _seed_stability(directed_hcs, directed_hce, expected_counts),
         "missing_runs": pd.DataFrame(missing_rows, columns=["backbone", "seed", "split", "status", "reason", "run_path"]),
     }

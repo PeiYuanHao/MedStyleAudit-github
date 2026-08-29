@@ -53,8 +53,9 @@ def authorize_final_test(output_root: str | Path, protocol_path: str | Path = "c
     root = Path(output_root)
     preflight_path = root / "protocol" / "final_preflight.json"
     hash_path = root / "protocol" / "protocol_sha256.txt"
-    if not Path(protocol_path).is_file() or not hash_path.is_file() or not preflight_path.is_file():
-        raise PermissionError("Final test is locked: protocol, protocol hash, and PASS preflight are required")
+    unlock_path = root / "protocol" / "final_test_lock.json"
+    if not Path(protocol_path).is_file() or not hash_path.is_file() or not preflight_path.is_file() or not unlock_path.is_file():
+        raise PermissionError("Final test is locked: protocol, protocol hash, PASS preflight, and explicit unlock are required")
     protocol_hash = verify_protocol_lock(protocol_path, hash_path)
     preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
     if preflight.get("status") != "PASS" or preflight.get("protocol_hash") != protocol_hash:
@@ -62,6 +63,13 @@ def authorize_final_test(output_root: str | Path, protocol_path: str | Path = "c
     commit, dirty = git_state()
     if dirty or preflight.get("git_commit") != commit:
         raise PermissionError("Final test is locked: Git must be clean and match the preflight commit")
+    unlock = json.loads(unlock_path.read_text(encoding="utf-8"))
+    if (
+        unlock.get("status") != "unlocked"
+        or unlock.get("protocol_sha256") != protocol_hash
+        or unlock.get("git_commit") != commit
+    ):
+        raise PermissionError("Final test is locked: explicit unlock does not match the current protocol and commit")
     return {"protocol_hash": protocol_hash, "git_commit": commit}
 
 
@@ -89,14 +97,25 @@ def assert_frozen_execution_config(
     matching: Mapping | None = None,
     model: Mapping | None = None,
     audit: Mapping | None = None,
+    robustness: Mapping | None = None,
     seed: int | None = None,
 ) -> None:
     """Reject final-test configs that diverge from locked protocol fields."""
     protocol = resolved_protocol(protocol_path)
     if matching is not None:
-        keys = ["donors_per_source", "lambda_balance", "lambda_pair", "tau_distance", "tau_balance", "candidate_pool_size", "donor_reuse_cap"]
+        keys = [
+            "donors_per_source", "lambda_balance", "lambda_pair", "tau_distance",
+            "tau_balance", "candidate_pool_size", "donor_reuse_cap",
+            "donor_slide_reuse_cap", "min_donor_slide_diversity", "exact_columns",
+        ]
         mismatches = [key for key in keys if matching.get(key) != protocol["matching"].get(key)]
+        if matching.get("method") != protocol["matching"]["method"]: mismatches.append("method")
         if list(matching.get("descriptor_columns", [])) != list(protocol["matching"]["descriptor_features"]): mismatches.append("descriptor_columns")
+        if matching.get("physical_id_column") != "physical_id": mismatches.append("physical_id_column")
+        if dict(matching.get("feature_calipers", {})) != {}: mismatches.append("feature_calipers")
+        configured_test_targets = {int(value) for value in matching.get("target_hospitals", {}).get("test", [])}
+        frozen_test_targets = {int(pair[1]) for pair in protocol["audit"]["expected_directed_pairs"]["test"]}
+        if configured_test_targets != frozen_test_targets: mismatches.append("target_hospitals.test")
         if mismatches: raise PermissionError(f"Final-test matching config diverges from the frozen protocol: {mismatches}")
     if model is not None:
         architecture = model.get("model", {}).get("architecture")
@@ -108,11 +127,39 @@ def assert_frozen_execution_config(
         for source, target in checks.items():
             if str(training.get(source)).lower() != str(protocol["models"][target]).lower(): mismatches.append(source)
         if seed is not None and int(seed) not in protocol["models"]["seeds"]: mismatches.append("seed")
+        if training.get("selection_metric") != protocol["model"]["selection_metric"]: mismatches.append("selection_metric")
+        if not bool(training.get("maximize_metric", False)): mismatches.append("maximize_metric")
         if mismatches: raise PermissionError(f"Final-test model config diverges from the frozen protocol: {mismatches}")
     if audit is not None:
         expected = protocol["scientific_definitions"]
         mismatches = [name for name in ("roi_size", "patch_size") if int(audit.get(name, -1)) != int(expected[name])]
+        audit_checks = {
+            "source_buffer": protocol["audit"]["primary_source_buffer"],
+            "feather_width": protocol["audit"]["feather_width"],
+            "inference_batch_size": protocol["audit"]["inference_batch_size"],
+            "q_min": protocol["statistics"]["q_min"],
+            "bootstrap_draws": protocol["statistics"]["bootstrap_draws"],
+            "confidence": protocol["statistics"]["confidence_level"],
+            "audit_sample_size": protocol["audit"]["audit_sample_size"],
+            "audit_sampling_seed": protocol["audit"]["audit_sampling_seed"],
+            "pair_weights": "equal",
+        }
+        mismatches.extend(name for name, value in audit_checks.items() if audit.get(name) != value)
         configured = {tuple(map(int, pair)) for pair in audit.get("expected_directed_pairs", {}).get("test", [])}
         frozen = {tuple(map(int, pair)) for pair in protocol["audit"]["expected_directed_pairs"]["test"]}
         if configured != frozen: mismatches.append("expected_directed_pairs.test")
         if mismatches: raise PermissionError(f"Final-test audit config diverges from the frozen protocol: {mismatches}")
+    if robustness is not None:
+        actual = (
+            int(robustness.get("source_buffer", -1)),
+            str(robustness.get("boundary_mode", "")),
+            int(robustness.get("feather_width", -1)),
+        )
+        width = int(protocol["audit"]["feather_width"])
+        allowed = {
+            (int(protocol["audit"]["primary_source_buffer"]), str(protocol["audit"]["primary_boundary"]), width),
+            (int(protocol["audit"]["robustness_source_buffer"]), str(protocol["audit"]["primary_boundary"]), width),
+            (int(protocol["audit"]["primary_source_buffer"]), str(protocol["audit"]["robustness_boundary"]), 0),
+        }
+        if actual not in allowed:
+            raise PermissionError(f"Final-test robustness setting diverges from the frozen protocol: {actual}")
