@@ -33,6 +33,85 @@ POPULATIONS = {"hospital1": "val", "hospital2": "test"}
 PRIMARY_SETTINGS = ("primary", "random_paired", "roi_only")
 ROBUSTNESS_SETTINGS = ("buffer_r8", "hard_boundary")
 
+PARTIAL_RESUME_MODEL_FIELDS = (
+    "architecture",
+    "pretrained",
+    "input_mean",
+    "input_std",
+)
+PARTIAL_RESUME_TRAINING_FIELDS = (
+    "epochs",
+    "batch_size",
+    "optimizer",
+    "learning_rate",
+    "weight_decay",
+    "scheduler",
+    "amp",
+    "selection_metric",
+    "maximize_metric",
+)
+PARTIAL_RESUME_DATA_FIELDS = ("version", "backend")
+
+
+def _partial_resume_error(seed: int, checkpoint: Path, reason: str) -> RuntimeError:
+    return RuntimeError(
+        f"Refusing to resume seed {seed} from {checkpoint.name} because its provenance does not match "
+        f"the current frozen final run: {reason}. Remove or intentionally archive the old partial "
+        f"checkpoint/output directory before starting a clean final training run."
+    )
+
+
+def _scientific_training_config(config: dict) -> dict[str, object]:
+    return {
+        **{f"model.{field}": config.get("model", {}).get(field) for field in PARTIAL_RESUME_MODEL_FIELDS},
+        **{f"training.{field}": config.get("training", {}).get(field) for field in PARTIAL_RESUME_TRAINING_FIELDS},
+        **{f"data.{field}": config.get("data", {}).get(field) for field in PARTIAL_RESUME_DATA_FIELDS},
+    }
+
+
+def validate_partial_training_resume(
+    seed_dir: Path,
+    seed: int,
+    current_model_config: dict,
+    current_git_commit: str,
+    current_protocol_hash: str,
+) -> Path:
+    """Return last.ckpt only when its persisted scientific provenance is current."""
+    checkpoint = seed_dir / "last.ckpt"
+    run_info_path = seed_dir / "run_info.json"
+    config_path = seed_dir / "config_resolved.yaml"
+    if not run_info_path.is_file():
+        raise _partial_resume_error(seed, checkpoint, "run_info.json is missing")
+    if not config_path.is_file():
+        raise _partial_resume_error(seed, checkpoint, "config_resolved.yaml is missing")
+    try:
+        run_info = json.loads(run_info_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise _partial_resume_error(seed, checkpoint, f"run_info.json is invalid ({error})") from error
+    try:
+        recorded_config = load_config(config_path)
+    except (OSError, ValueError) as error:
+        raise _partial_resume_error(seed, checkpoint, f"config_resolved.yaml is invalid ({error})") from error
+
+    if run_info.get("git_commit") != current_git_commit:
+        raise _partial_resume_error(seed, checkpoint, "git_commit mismatch")
+    recorded_hashes = [run_info[key] for key in ("protocol_hash", "protocol_sha256") if run_info.get(key)]
+    if not recorded_hashes or any(value != current_protocol_hash for value in recorded_hashes):
+        raise _partial_resume_error(seed, checkpoint, "protocol hash mismatch")
+    if run_info.get("seed") != seed:
+        raise _partial_resume_error(seed, checkpoint, "seed mismatch")
+    if run_info.get("experiment") != f"train_erm_{BACKBONE}":
+        raise _partial_resume_error(seed, checkpoint, "training experiment/architecture mismatch")
+    if run_info.get("dataset_version") != current_model_config.get("data", {}).get("version"):
+        raise _partial_resume_error(seed, checkpoint, "dataset version mismatch")
+
+    current_scientific = _scientific_training_config(current_model_config)
+    recorded_scientific = _scientific_training_config(recorded_config)
+    mismatches = [field for field, value in current_scientific.items() if recorded_scientific[field] != value]
+    if mismatches:
+        raise _partial_resume_error(seed, checkpoint, f"scientific config mismatch: {', '.join(mismatches)}")
+    return checkpoint
+
 
 class FinalSuite:
     def __init__(self, args: argparse.Namespace) -> None:
@@ -213,17 +292,31 @@ class FinalSuite:
     def train(self, seed: int, device: str) -> None:
         directory = self.output / "checkpoints" / BACKBONE / f"seed_{seed:04d}"
         command = [PYTHON, "scripts/05_train_erm.py", "--config", self.model_config, "--seed", str(seed), "--device", device]
+        outputs = [self.checkpoint(seed), directory / "metrics.csv", self.id_logits(seed), self.output / "predictions" / BACKBONE / f"seed_{seed:04d}" / "ood_val.parquet"]
+        stage_name = f"train_{BACKBONE}_{seed:04d}"
+        stage_signature = self.training_stage_signature(command)
+        if self.completed(stage_name, outputs, command=command, stage_signature=stage_signature):
+            print(f"[resume] {stage_name}")
+            return
         if directory.exists():
             command.append("--overwrite")
         if (directory / "last.ckpt").is_file():
-            command += ["--resume", str(directory / "last.ckpt")]
-        outputs = [self.checkpoint(seed), directory / "metrics.csv", self.id_logits(seed), self.output / "predictions" / BACKBONE / f"seed_{seed:04d}" / "ood_val.parquet"]
+            commit, _ = git_state(REPO)
+            protocol_hash = (REPO / "configs/final/protocol_sha256.txt").read_text(encoding="utf-8").strip()
+            checkpoint = validate_partial_training_resume(
+                directory,
+                seed,
+                load_config(self.model_config),
+                commit,
+                protocol_hash,
+            )
+            command += ["--resume", str(checkpoint)]
         self.run(
-            f"train_{BACKBONE}_{seed:04d}",
+            stage_name,
             command,
             outputs,
             f"train_seed_{seed}",
-            stage_signature=self.training_stage_signature(command),
+            stage_signature=stage_signature,
         )
 
     def require_explicit_final_test_unlock(self) -> dict:
