@@ -89,6 +89,8 @@ trap 'finalize $?' EXIT
 trap 'on_signal SIGINT' INT
 trap 'on_signal SIGTERM' TERM
 
+python scripts/autodl_unattended.py preflight
+
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "Refusing final execution from a dirty Git checkout."
   exit 2

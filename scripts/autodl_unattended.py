@@ -54,6 +54,41 @@ def suite_command(phase: str, devices: list[str], python: str = sys.executable) 
     return command
 
 
+def require_hf_token(environment: Mapping[str, str]) -> None:
+    if not environment.get("HF_TOKEN"):
+        raise RuntimeError("HF_TOKEN is required for unattended final execution")
+
+
+def _valid_suite_hf_marker(output_root: Path, started_at: str) -> bool:
+    marker = output_root / ".hf_verified"
+    if not marker.is_file():
+        return False
+    try:
+        start = datetime.fromisoformat(started_at.replace("Z", "+00:00")).astimezone(timezone.utc)
+        verified = datetime.fromisoformat(marker.read_text(encoding="utf-8").strip().replace("Z", "+00:00"))
+        if verified.tzinfo is None:
+            return False
+        verified = verified.astimezone(timezone.utc)
+        modified = datetime.fromtimestamp(marker.stat().st_mtime, tz=timezone.utc)
+    except (OSError, ValueError):
+        return False
+    now = datetime.now(timezone.utc)
+    return start <= verified <= now and modified >= start
+
+
+def _github_commit_command(message: str) -> list[str]:
+    return [
+        "git",
+        "-c",
+        "user.name=MedStyleAudit AutoDL",
+        "-c",
+        "user.email=medstyleaudit-autodl@users.noreply.github.com",
+        "commit",
+        "-m",
+        message,
+    ]
+
+
 def _candidate_files(root: Path) -> list[Path]:
     candidates = [root / "protocol" / name for name in PROTOCOL_FILES]
     for aggregate in (root / "aggregate" / name for name in ("hospital1", "hospital2", "final")):
@@ -136,7 +171,7 @@ def push_github_export(repo_root: Path, export_dir: Path, phase: str, timestamp:
         archive = worktree / "results" / "final-runs" / run_id
         shutil.copytree(export_dir, archive)
         _git(["git", "add", "-f", str(archive.relative_to(worktree))], worktree)
-        _git(["git", "commit", "-m", f"results: archive MedStyleAudit {phase} final run"], worktree)
+        _git(_github_commit_command(f"results: archive MedStyleAudit {phase} final run"), worktree)
         _git(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], worktree)
         return branch
     finally:
@@ -202,11 +237,24 @@ def finalize_unattended_run(
         "github_export_attempted": False,
         "github_export_succeeded": False,
         "github_result_branch": None,
+        "shutdown_attempted": False,
     }
     _write_status(status_path, status)
 
-    if env.get("HF_TOKEN"):
+    suite_hf_verified = (
+        phase == "hospital2"
+        and suite_exit_code == 0
+        and _valid_suite_hf_marker(output_root, started_at)
+    )
+    if suite_hf_verified:
+        status["hf_backup_mode"] = "suite_verified"
+        status["hf_full_backup_reused_from_suite"] = True
+        status["hf_upload_succeeded"] = True
+        status["hf_verification_succeeded"] = True
+        _write_status(status_path, status)
+    elif env.get("HF_TOKEN"):
         status["hf_upload_attempted"] = True
+        status["hf_backup_mode"] = "finalizer_full"
         _write_status(status_path, status)
         upload = [sys.executable, "scripts/hf_upload_artifacts.py", "--root", str(output_root)]
         status["hf_upload_succeeded"] = command_runner(upload, repo_root) == 0
@@ -250,7 +298,7 @@ def finalize_unattended_run(
         status["finished_at"] = utc_now()
         _write_status(status_path, status)
 
-    if status["hf_upload_attempted"]:
+    if env.get("HF_TOKEN"):
         command_runner(
             [
                 sys.executable,
@@ -262,14 +310,22 @@ def finalize_unattended_run(
             ],
             repo_root,
         )
-    command_runner(["sync"], repo_root)
     if shutdown:
         status["shutdown_attempted"] = True
+        status["finished_at"] = utc_now()
+        _write_status(status_path, status)
+        command_runner(["sync"], repo_root)
         status["shutdown_succeeded"] = command_runner(["/usr/bin/shutdown"], repo_root) == 0
         if not status["shutdown_succeeded"]:
             print("ERROR: /usr/bin/shutdown failed; manual AutoDL shutdown is required.", file=sys.stderr)
         status["finished_at"] = utc_now()
-        _write_status(status_path, status)
+        try:
+            _write_status(status_path, status)
+        except OSError:
+            pass
+        command_runner(["sync"], repo_root)
+    else:
+        command_runner(["sync"], repo_root)
     return status
 
 
@@ -283,8 +339,13 @@ def main() -> None:
     finalize.add_argument("--suite-exit-code", type=int, required=True)
     finalize.add_argument("--started-at", required=True)
     finalize.add_argument("--output-root", type=Path, required=True)
+    subparsers.add_parser("preflight")
     args = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[1]
+    if args.command == "preflight":
+        require_hf_token(os.environ)
+        print("Unattended backup preflight: PASS")
+        return
     if args.command == "authorize-hospital2":
         from medstyleaudit.protocol import authorize_final_test
 

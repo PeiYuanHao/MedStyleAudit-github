@@ -44,7 +44,17 @@ def _output(tmp_path):
     return root
 
 
-def _finalize(tmp_path, *, suite_exit=0, upload=0, verify=0, github_failure=False):
+def _finalize(
+    tmp_path,
+    *,
+    phase="hospital1",
+    suite_exit=0,
+    upload=0,
+    verify=0,
+    github_failure=False,
+    environment=None,
+    started_at="2026-08-29T00:00:00+00:00",
+):
     module = _module()
     output = _output(tmp_path)
     log = output / "logs" / "final_suite" / "autodl_wrapper.log"
@@ -62,10 +72,12 @@ def _finalize(tmp_path, *, suite_exit=0, upload=0, verify=0, github_failure=Fals
     status = module.finalize_unattended_run(
         repo_root=Path(__file__).resolve().parents[1],
         output_root=output,
-        phase="hospital1",
+        phase=phase,
         suite_exit_code=suite_exit,
-        started_at="2026-08-29T00:00:00+00:00",
-        environment={"HF_TOKEN": "hf-secret", "GITHUB_TOKEN": "github-secret"},
+        started_at=started_at,
+        environment=environment
+        if environment is not None
+        else {"HF_TOKEN": "hf-secret", "GITHUB_TOKEN": "github-secret"},
         command_runner=commands,
         github_pusher=github,
     )
@@ -82,6 +94,74 @@ def test_success_and_failure_both_attempt_backups_and_shutdown(tmp_path, suite_e
     assert status["status"] == ("success" if suite_exit == 0 else "failed")
 
 
+def test_missing_hf_token_rejects_startup_but_finalization_still_shuts_down(tmp_path):
+    module = _module()
+    with pytest.raises(RuntimeError, match="HF_TOKEN is required"):
+        module.require_hf_token({})
+    _, _, commands, github_calls, _ = _finalize(tmp_path, environment={})
+    assert github_calls
+    assert commands.called("/usr/bin/shutdown")
+    wrapper = (Path(__file__).resolve().parents[1] / "scripts" / "autodl_run_final_suite.sh").read_text(
+        encoding="utf-8"
+    )
+    assert wrapper.index("trap 'finalize $?' EXIT") < wrapper.index("autodl_unattended.py preflight")
+    assert wrapper.index("autodl_unattended.py preflight") < wrapper.index('"${suite_command[@]}" &')
+
+
+def test_hospital1_success_runs_full_hf_upload_and_verify(tmp_path):
+    _, _, commands, _, status = _finalize(tmp_path)
+    full_uploads = [command for command in commands.calls if "--root" in command]
+    assert full_uploads
+    assert commands.called("hf_verify_artifacts.py")
+    assert status["hf_backup_mode"] == "finalizer_full"
+
+
+def test_hospital2_success_reuses_current_suite_verification(tmp_path):
+    module = _module()
+    output = _output(tmp_path)
+    started_at = module.utc_now()
+    (output / ".hf_verified").write_text(module.utc_now(), encoding="utf-8")
+    commands = FakeCommands()
+    github_calls = []
+    status = module.finalize_unattended_run(
+        repo_root=Path(__file__).resolve().parents[1],
+        output_root=output,
+        phase="hospital2",
+        suite_exit_code=0,
+        started_at=started_at,
+        environment={"HF_TOKEN": "hf-secret"},
+        command_runner=commands,
+        github_pusher=lambda *args: github_calls.append(args) or "results/hospital2-current",
+    )
+    assert not any("--root" in command for command in commands.calls)
+    assert not commands.called("hf_verify_artifacts.py")
+    assert any("--file" in command for command in commands.calls)
+    assert github_calls
+    assert commands.called("/usr/bin/shutdown")
+    assert status["hf_backup_mode"] == "suite_verified"
+    assert status["hf_full_backup_reused_from_suite"] is True
+
+
+def test_hospital2_failure_ignores_hf_marker_and_runs_recovery(tmp_path):
+    module = _module()
+    output = _output(tmp_path)
+    (output / ".hf_verified").write_text(module.utc_now(), encoding="utf-8")
+    commands = FakeCommands()
+    status = module.finalize_unattended_run(
+        repo_root=Path(__file__).resolve().parents[1],
+        output_root=output,
+        phase="hospital2",
+        suite_exit_code=9,
+        started_at="2026-08-29T00:00:00+00:00",
+        environment={"HF_TOKEN": "hf-secret"},
+        command_runner=commands,
+        github_pusher=lambda *args: "results/hospital2-failed",
+    )
+    assert any("--root" in command for command in commands.calls)
+    assert commands.called("hf_verify_artifacts.py")
+    assert status["hf_backup_mode"] == "finalizer_full"
+
+
 def test_hf_upload_failure_still_attempts_github_and_shutdown(tmp_path):
     _, _, commands, github_calls, status = _finalize(tmp_path, upload=1)
     assert not status["hf_upload_succeeded"]
@@ -93,6 +173,42 @@ def test_github_push_failure_still_attempts_shutdown(tmp_path):
     _, _, commands, _, status = _finalize(tmp_path, github_failure=True)
     assert not status["github_export_succeeded"]
     assert commands.called("/usr/bin/shutdown")
+
+
+def test_github_commit_uses_explicit_automation_identity():
+    module = _module()
+    command = module._github_commit_command("results: test")
+    assert "user.name=MedStyleAudit AutoDL" in command
+    assert "user.email=medstyleaudit-autodl@users.noreply.github.com" in command
+    assert command.count("-c") == 2
+
+
+def test_shutdown_intent_is_persisted_and_synced_before_shutdown(tmp_path):
+    module = _module()
+    output = _output(tmp_path)
+    calls = []
+    observed = []
+
+    def runner(command, cwd):
+        calls.append(tuple(command))
+        if command == ["/usr/bin/shutdown"]:
+            persisted = json.loads(
+                (output / "protocol" / "autodl_final_status.json").read_text(encoding="utf-8")
+            )
+            observed.append(persisted["shutdown_attempted"])
+            assert calls[-2] == ("sync",)
+        return 0
+
+    module.finalize_unattended_run(
+        repo_root=Path(__file__).resolve().parents[1],
+        output_root=output,
+        phase="hospital1",
+        suite_exit_code=0,
+        started_at="2026-08-29T00:00:00+00:00",
+        environment={"HF_TOKEN": "hf-secret", "MEDSTYLE_GITHUB_EXPORT": "0"},
+        command_runner=runner,
+    )
+    assert observed == [True]
 
 
 def test_hf_verification_failure_still_attempts_shutdown(tmp_path):

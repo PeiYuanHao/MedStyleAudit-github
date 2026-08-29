@@ -8,7 +8,10 @@ backup does not keep the instance running.
 ## Preparation
 
 Prepare the dataset and Python environment, ensure the source checkout is clean,
-and configure authentication without putting tokens in command lines or files:
+and configure authentication without putting tokens in command lines or files.
+`HF_TOKEN` is mandatory: unattended execution refuses to start the expensive final
+suite without it, then records the preflight failure and follows the normal GitHub
+export, sync, and shutdown path.
 
 ```bash
 export HF_TOKEN=...
@@ -35,7 +38,8 @@ nohup bash scripts/autodl_run_final_suite.sh \
 
 This runs Hospital 1 without `--allow-final-test`, attempts Hugging Face backup and
 verification, pushes a small GitHub snapshot branch, and shuts down the instance.
-Hospital 2 remains locked.
+Hospital 2 remains locked. Experiment, HF, or GitHub failures are recorded but do
+not prevent the shutdown attempt.
 
 ## Manual Hospital-2 unlock
 
@@ -63,6 +67,13 @@ The wrapper first validates the existing unlock, then runs the final suite with
 `--resume --allow-final-test`. Missing or stale authorization fails before Hospital
 2 execution, but final backup and shutdown are still attempted.
 
+On successful Hospital-2 completion, `run_final_suite.py` has already performed its
+normal full Hugging Face upload and verification. When the current run's
+`.hf_verified` marker is valid, the unattended finalizer reuses that evidence rather
+than repeating the full upload/verification. It still uploads the latest
+`autodl_final_status.json` separately. Hospital-2 failures always run the recovery
+upload and verification, regardless of any old marker.
+
 ## Artifacts and recovery
 
 The wrapper log is stored at:
@@ -79,7 +90,9 @@ ${MEDSTYLE_OUTPUT_ROOT}/protocol/autodl_final_status.json
 
 After restarting, inspect that file first. It preserves the original suite exit
 code and separately records Hugging Face upload/verification, GitHub export, and
-shutdown outcomes.
+shutdown outcomes. If the machine powered off before the shutdown command returned,
+the file still contains `shutdown_attempted: true`; use the other fields to decide
+whether artifact recovery is required.
 
 Small GitHub files are staged locally under:
 
