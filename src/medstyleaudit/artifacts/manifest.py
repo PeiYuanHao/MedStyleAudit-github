@@ -10,7 +10,7 @@ from typing import Iterable
 from .checksums import sha256_file, verify_sha256
 
 
-ALLOWED_TOP_LEVEL = {"README.md", "MANIFEST.json", "protocol", "p0", "checkpoints", "predictions", "audits", "aggregate", "figures", "logs"}
+ALLOWED_TOP_LEVEL = {"README.md", "MANIFEST.json", "protocol", "p0", "subsets", "checkpoints", "predictions", "audits", "aggregate", "figures", "logs"}
 FORBIDDEN_PARTS = {"camelyon17", "wsi", "xml_annotations", "raw", "wilds"}
 
 

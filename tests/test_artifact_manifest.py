@@ -21,8 +21,13 @@ def test_manifest_generation_and_checksum_validation(tmp_path):
 
 
 def test_manifest_rejects_raw_medical_data_paths():
-    with pytest.raises(ValueError, match="Raw/source"):
-        validate_hf_path("p0/raw/camelyon17/image.png")
+    for path in ("p0/raw/camelyon17/image.png", "subsets/raw/wilds/hospital1.parquet"):
+        with pytest.raises(ValueError, match="Raw/source"):
+            validate_hf_path(path)
+
+
+def test_manifest_allows_derived_subset_tables():
+    assert validate_hf_path("subsets/hospital1.parquet") == "subsets/hospital1.parquet"
 
 
 def test_exact_hugging_face_namespace_is_the_default(monkeypatch):

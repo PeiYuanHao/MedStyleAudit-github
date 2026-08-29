@@ -20,6 +20,28 @@ class ROIIdentityError(AssertionError):
         self.qa = qa
 
 
+SOURCE_IDENTITY_COLUMNS = (
+    "source_split",
+    "source_hospital",
+    "source_slide",
+    "source_patient",
+    "source_physical_id",
+    "label",
+)
+
+
+def _metadata_equal(left: object, right: object) -> bool:
+    try:
+        if bool(pd.isna(left)) and bool(pd.isna(right)):
+            return True
+    except (TypeError, ValueError):
+        pass
+    try:
+        return bool(left == right)
+    except (TypeError, ValueError):
+        return False
+
+
 def infer_triplets(
     model,
     dataset,
@@ -43,6 +65,8 @@ def infer_triplets(
     cuda = str(device).startswith("cuda") and torch.cuda.is_available()
     prediction_rows, qa_rows = [], []
     pending_tensors, pending_bases = [], []
+    canonical_original_logits: dict[object, float] = {}
+    source_identities: dict[object, dict[str, object]] = {}
 
     def flush() -> None:
         if not pending_tensors:
@@ -51,9 +75,12 @@ def infer_triplets(
         tensors = tensors.to(device, non_blocking=cuda)
         logits = model(tensors).reshape(len(pending_tensors), 3).detach().cpu().numpy()
         for base, values in zip(pending_bases, logits):
+            source_id = base["source_id"]
+            if source_id not in canonical_original_logits:
+                canonical_original_logits[source_id] = float(values[0])
             prediction_rows.append({
                 **base,
-                "original_logit": float(values[0]),
+                "original_logit": canonical_original_logits[source_id],
                 "within_logit": float(values[1]),
                 "cross_logit": float(values[2]),
                 "source_buffer": source_buffer,
@@ -69,6 +96,17 @@ def infer_triplets(
             from tqdm.auto import tqdm
             records = tqdm(records, total=len(triplets), desc="Counterfactual audit inference", unit="triplet")
         for record in records:
+            base = {name: getattr(record, name) for name in triplets.columns}
+            source_id = base["source_id"]
+            identity = {column: base[column] for column in SOURCE_IDENTITY_COLUMNS if column in base}
+            if source_id in source_identities:
+                for column, value in identity.items():
+                    if not _metadata_equal(value, source_identities[source_id][column]):
+                        raise ValueError(
+                            f"Inconsistent source metadata for source_id {source_id}: {column}"
+                        )
+            else:
+                source_identities[source_id] = identity
             source = np.asarray(dataset[int(record.source_id)][0].convert("RGB"))
             within_donor = np.asarray(dataset[int(record.within_donor)][0].convert("RGB"))
             cross_donor = np.asarray(dataset[int(record.cross_donor)][0].convert("RGB"))
@@ -93,7 +131,6 @@ def infer_triplets(
             qa_rows.extend(image_rows)
             if any(not row["tensor_roi_equal"] for row in tensor_rows):
                 raise ROIIdentityError(f"Final classifier-input tensor ROI identity failed for triplet {record.triplet_id}", pd.DataFrame(qa_rows))
-            base = {name: getattr(record, name) for name in triplets.columns}
             pending_tensors.append(tensors)
             pending_bases.append(base)
             if len(pending_tensors) >= batch_size:
