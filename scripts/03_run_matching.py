@@ -2,15 +2,27 @@
 
 from pathlib import Path
 
-from medstyleaudit.matching.balance import balance_summary, donor_reuse_detail, donor_reuse_distribution, feature_balance, slide_reuse_detail, slide_reuse_distribution
+from medstyleaudit.matching.balance import (
+    balance_summary,
+    donor_reuse_detail,
+    donor_reuse_distribution,
+    feature_balance,
+    slide_reuse_detail,
+    slide_reuse_distribution,
+)
 from medstyleaudit.matching.candidate_bank import CandidateBank
-from medstyleaudit.matching.coverage import annotate_common_support, attrition_table, common_support_coverage, directed_coverage
+from medstyleaudit.matching.coverage import (
+    annotate_common_support,
+    attrition_table,
+    common_support_coverage,
+    directed_coverage,
+)
 from medstyleaudit.matching.triplet_matcher import BalancedTripletMatcher
 from medstyleaudit.utils.cli import common_parser, enforce_final_test_guard
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import read_table, save_json, save_table
-from medstyleaudit.utils.run_metadata import start_run
 from medstyleaudit.utils.paths import configured_output
+from medstyleaudit.utils.run_metadata import start_run
 
 
 def main() -> None:
@@ -29,6 +41,7 @@ def main() -> None:
     frame = read_table(config["data"]["descriptors"])
     if settings.get("require_validated_lesion_mapping"):
         import json
+
         from medstyleaudit.utils.paths import experiment_path
         alignment_path = experiment_path("p0/data_integrity/alignment_report.json")
         lesion_path = experiment_path("p0/data_integrity/lesion_features.parquet")
@@ -83,7 +96,7 @@ def main() -> None:
     save_table(attrition_table(ledger), output / "attrition.csv")
     save_table(balance_summary(triplets) if not triplets.empty else triplets, output / "matching_balance.csv")
     if not triplets.empty:
-        save_table(feature_balance(triplets, frame, list(settings["descriptor_columns"])), output / "feature_balance.csv")
+        save_table(feature_balance(triplets, frame, list(settings["descriptor_columns"]), bank.standardizer), output / "feature_balance.csv")
         save_table(donor_reuse_detail(triplets, frame), output / "donor_reuse.csv")
         save_table(donor_reuse_distribution(triplets, frame), output / "donor_reuse_summary.csv")
         save_table(slide_reuse_detail(triplets, frame), output / "slide_reuse.csv")

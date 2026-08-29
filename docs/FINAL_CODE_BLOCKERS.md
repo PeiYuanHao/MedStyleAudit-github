@@ -1,23 +1,25 @@
 # Final Code Blockers
 
-Items below are intentionally unresolved pending independent review. They do not
-block implementation of the reduced suite, but they are recorded so that no
+Items below record the disposition of the final code-review blockers so that no
 scientific value is silently invented.
 
 ## 1. Final donor-slide reuse cap
 
-- **Status:** unresolved.
+- **Status:** **RESOLVED — ratified as a nonbinding operational ceiling.**
 - **Context:** `configs/matching/primary.yaml` and `configs/final/FINAL_PROTOCOL.yaml`
-  carry `donor_slide_reuse_cap: 200000`. This is the pre-existing P0 development
-  value and is deliberately nonbinding at the final suite scale (the value exceeds
-  any plausible reuse, so it does not constrain matching).
-- **Reason not resolved here:** the final *justified* scientific cap must not be
-  chosen from model outcomes or HCS/HCE results, and no repository evidence yet
-  contains a final, decision-ready value.
-- **Required action:** a Codex review must either (a) ratify the existing value as
-  the final cap, or (b) supply a justified final value. Until then the value
-  remains `200000` (nonbinding) and is flagged here rather than replaced with a
-  fabricated number.
+  retain `donor_slide_reuse_cap: 200000`.
+- **Matching-only evidence:** commit `6dfd4f3398eab7bf271324bba91e725e8f0467cc`
+  introduced 200000 explicitly as a metadata-feasible operational cap to prevent
+  the earlier cap from collapsing matching. The traceable P0 artifacts added by
+  commit `16cfd0e` record that exact configuration, a feasible metadata-only reuse
+  capacity gate (628272 required versus 6040020 available donor uses globally),
+  and a clean completed matching run with 104712 candidate comparisons and 304671
+  accepted triplets. No model prediction, AUROC, HCS, or HCE result was consulted.
+- **Final policy:** 200000 is intentionally retained only as a fail-safe operational
+  ceiling. It is not claimed to provide meaningful slide-level regularization and
+  was not selected using classifier-dependent outcomes. The scientific reuse
+  constraint remains the separately frozen donor-patch cap; this ceiling must not
+  be interpreted as a tuned slide concentration hyperparameter.
 
 ## 2. Lesion-aware analysis inputs
 

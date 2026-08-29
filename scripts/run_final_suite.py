@@ -15,12 +15,12 @@ import shutil
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
 
-from medstyleaudit.protocol import git_state
+from medstyleaudit.protocol import authorize_final_test, git_state
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import save_json
 
@@ -74,6 +74,7 @@ class FinalSuite:
         outputs: list[Path],
         validity: Callable[[], bool] | None = None,
         command: list[str] | None = None,
+        stage_signature: list[str] | None = None,
     ) -> bool:
         marker = self.stage_root / f"{name}.json"
         if self.args.force or not marker.is_file() or not all(path.exists() for path in outputs):
@@ -81,17 +82,32 @@ class FinalSuite:
         metadata = json.loads(marker.read_text(encoding="utf-8"))
         if metadata.get("status") != "completed":
             return False
-        if command is not None:
+        signature = stage_signature or command
+        if signature is not None:
             commit, dirty = git_state(REPO)
             tracked_hash = (REPO / "configs/final/protocol_sha256.txt").read_text(encoding="utf-8").strip()
             if dirty or metadata.get("git_commit") != commit:
                 return False
-            if metadata.get("protocol_hash") != tracked_hash or metadata.get("command") != command:
+            recorded_signature = metadata.get("stage_signature")
+            if recorded_signature is None and name.startswith("train_resnet50_"):
+                recorded_signature = self.training_stage_signature(metadata.get("command", []))
+            if recorded_signature is None:
+                recorded_signature = metadata.get("command")
+            if metadata.get("protocol_hash") != tracked_hash or recorded_signature != signature:
                 return False
         return validity is None or bool(validity())
 
-    def run(self, name: str, command: list[str], outputs: list[Path], summary: str | None = None, validity: Callable[[], bool] | None = None) -> None:
-        if self.completed(name, outputs, validity, command):
+    def run(
+        self,
+        name: str,
+        command: list[str],
+        outputs: list[Path],
+        summary: str | None = None,
+        validity: Callable[[], bool] | None = None,
+        stage_signature: list[str] | None = None,
+    ) -> None:
+        signature = stage_signature or command
+        if self.completed(name, outputs, validity, command, signature):
             print(f"[resume] {name}")
             return
         with self.state_lock:
@@ -103,7 +119,7 @@ class FinalSuite:
         print(f"[run] {name}")
         with log_path.open("a", encoding="utf-8") as log:
             log.write(f"\n[{datetime.now(timezone.utc).isoformat()}] {' '.join(command)}\n")
-            process = subprocess.run(command, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, text=True)
+            process = subprocess.run(command, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, text=True, check=False)
         if process.returncode or not all(path.exists() for path in outputs):
             with self.state_lock:
                 self.state["stages"][name] = "failed"
@@ -117,6 +133,8 @@ class FinalSuite:
             "stage": name,
             "status": "completed",
             "command": command,
+            "execution_command": command,
+            "stage_signature": signature,
             "outputs": [str(path) for path in outputs],
             "git_commit": commit,
             "protocol_hash": tracked_hash,
@@ -171,6 +189,18 @@ class FinalSuite:
     def id_logits(self, seed: int) -> Path:
         return self.output / "predictions" / BACKBONE / f"seed_{seed:04d}" / "id_val.parquet"
 
+    @staticmethod
+    def training_stage_signature(command: list[str]) -> list[str]:
+        """Normalize a training invocation to its stable scientific arguments."""
+        if "scripts/05_train_erm.py" not in command:
+            return []
+        signature = ["scripts/05_train_erm.py"]
+        for option in ("--config", "--seed"):
+            if option not in command or command.index(option) + 1 >= len(command):
+                return []
+            signature.extend([option, command[command.index(option) + 1]])
+        return signature
+
     def triplets_for(self, population: str) -> Path:
         return self.output / "subsets" / f"{population}_triplets.parquet"
 
@@ -188,7 +218,22 @@ class FinalSuite:
         if (directory / "last.ckpt").is_file():
             command += ["--resume", str(directory / "last.ckpt")]
         outputs = [self.checkpoint(seed), directory / "metrics.csv", self.id_logits(seed), self.output / "predictions" / BACKBONE / f"seed_{seed:04d}" / "ood_val.parquet"]
-        self.run(f"train_{BACKBONE}_{seed:04d}", command, outputs, f"train_seed_{seed}")
+        self.run(
+            f"train_{BACKBONE}_{seed:04d}",
+            command,
+            outputs,
+            f"train_seed_{seed}",
+            stage_signature=self.training_stage_signature(command),
+        )
+
+    def require_explicit_final_test_unlock(self) -> dict:
+        try:
+            return authorize_final_test(self.output, REPO / "configs/final/FINAL_PROTOCOL.yaml")
+        except PermissionError as error:
+            raise PermissionError(
+                "Hospital 2 is locked. Run:\n python scripts/15_unlock_final_test.py\n"
+                " after Hospital-1 completion."
+            ) from error
 
     def primary_audit(self, population: str, setting: str, seed: int, triplets: Path, device: str) -> None:
         split = POPULATIONS[population]
@@ -292,7 +337,7 @@ class FinalSuite:
 
     def execute(self) -> None:
         if self.repo_id != "PeiyuanHao/MedStyleAudit-Experiments":
-            raise EnvironmentError("MEDSTYLE_HF_REPO must be exactly PeiyuanHao/MedStyleAudit-Experiments")
+            raise OSError("MEDSTYLE_HF_REPO must be exactly PeiyuanHao/MedStyleAudit-Experiments")
         commit, dirty = git_state(REPO)
         if dirty:
             raise RuntimeError("Final suite requires a clean Git working tree")
@@ -351,7 +396,7 @@ class FinalSuite:
             print("Validation suite complete. Hospital 2 remains locked; resume with --allow-final-test.")
             return
 
-        self.run("unlock_final_test", [PYTHON, "scripts/15_unlock_final_test.py"], [protocol_dir / "final_test_lock.json"], "final_test")
+        self.require_explicit_final_test_unlock()
         self.state["final_test"] = "running"
         self.save_state()
 

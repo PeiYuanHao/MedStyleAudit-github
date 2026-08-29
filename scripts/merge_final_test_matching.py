@@ -3,17 +3,29 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import pandas as pd
 
-from medstyleaudit.matching.balance import balance_summary, donor_reuse_detail, donor_reuse_distribution, feature_balance, slide_reuse_detail, slide_reuse_distribution
-from medstyleaudit.matching.coverage import attrition_table, common_support_coverage, directed_coverage
-from medstyleaudit.utils.config import load_config
-from medstyleaudit.utils.io import read_table, save_table
-from medstyleaudit.utils.io import save_json
-from medstyleaudit.utils.paths import experiment_path
+from medstyleaudit.matching.balance import (
+    balance_summary,
+    donor_reuse_detail,
+    donor_reuse_distribution,
+    feature_balance,
+    slide_reuse_detail,
+    slide_reuse_distribution,
+)
+from medstyleaudit.matching.coverage import (
+    attrition_table,
+    common_support_coverage,
+    directed_coverage,
+)
+from medstyleaudit.matching.distance import Standardizer
 from medstyleaudit.utils.cli import enforce_final_test_guard
+from medstyleaudit.utils.config import load_config
+from medstyleaudit.utils.io import read_table, save_json, save_table
+from medstyleaudit.utils.paths import experiment_path
 
 
 def main() -> None:
@@ -28,6 +40,10 @@ def main() -> None:
     final_test = args.final_test or experiment_path("p0/matching_final_test")
     config = load_config(args.config); features = list(config["matching"]["descriptor_columns"])
     descriptors = read_table(config["data"]["descriptors"])
+    standardizer_path = primary / "descriptor_standardizer.json"
+    if not standardizer_path.is_file():
+        raise FileNotFoundError(f"Training-fitted descriptor standardizer is missing: {standardizer_path}")
+    standardizer = Standardizer.from_dict(json.loads(standardizer_path.read_text(encoding="utf-8")))
     triplets = pd.concat([read_table(primary / "triplets.parquet").query("source_split != 'test'"), read_table(final_test / "triplets.parquet")], ignore_index=True)
     ledger = pd.concat([read_table(primary / "source_ledger.parquet").query("source_split != 'test'"), read_table(final_test / "source_ledger.parquet")], ignore_index=True)
     save_table(triplets, primary / "triplets.parquet"); save_table(ledger, primary / "source_ledger.parquet")
@@ -35,7 +51,7 @@ def main() -> None:
     save_table(common_support_coverage(ledger), primary / "common_support_coverage.csv")
     save_table(attrition_table(ledger), primary / "attrition.csv")
     save_table(balance_summary(triplets), primary / "matching_balance.csv")
-    save_table(feature_balance(triplets, descriptors, features), primary / "feature_balance.csv")
+    save_table(feature_balance(triplets, descriptors, features, standardizer), primary / "feature_balance.csv")
     save_table(donor_reuse_detail(triplets, descriptors), primary / "donor_reuse.csv")
     save_table(donor_reuse_distribution(triplets, descriptors), primary / "donor_reuse_summary.csv")
     save_table(slide_reuse_detail(triplets, descriptors), primary / "slide_reuse.csv")
@@ -43,7 +59,7 @@ def main() -> None:
     directed = directed_coverage(ledger); common = common_support_coverage(ledger)
     test_directed = directed[directed["source_split"] == "test"]
     test_common = common[common["source_split"] == "test"]
-    feature = feature_balance(triplets, descriptors, features)
+    feature = feature_balance(triplets, descriptors, features, standardizer)
     test_feature = feature[feature["source_split"] == "test"]
     reuse = donor_reuse_detail(triplets, descriptors)
     donor_rows = reuse

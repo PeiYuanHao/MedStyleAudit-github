@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
 import subprocess
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping
 
 from medstyleaudit.utils.config import load_config
 from medstyleaudit.utils.io import save_json
+
+FINAL_TRAINING_SEEDS = (11, 42, 101)
+FINAL_HOSPITAL1_SETTINGS = ("primary", "random_paired", "roi_only", "buffer_r8", "hard_boundary")
 
 
 def resolved_protocol(path: str | Path) -> dict:
@@ -47,6 +51,70 @@ def git_state(repository: str | Path = ".") -> tuple[str, bool]:
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
     dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=root, check=True, capture_output=True, text=True).stdout.strip())
     return commit, dirty
+
+
+def _verify_current_stage_marker(path: Path, commit: str, protocol_hash: str) -> dict:
+    if not path.is_file():
+        raise PermissionError(f"Required Hospital-1 stage marker is missing: {path.name}")
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    if metadata.get("status") != "completed":
+        raise PermissionError(f"Required Hospital-1 stage is incomplete: {path.stem}")
+    if metadata.get("git_commit") != commit or metadata.get("protocol_hash") != protocol_hash:
+        raise PermissionError(f"Required Hospital-1 stage has stale Git/protocol provenance: {path.stem}")
+    if not metadata.get("stage_signature") and not metadata.get("command"):
+        raise PermissionError(f"Required Hospital-1 stage lacks a provenance signature: {path.stem}")
+    outputs = metadata.get("outputs")
+    if not isinstance(outputs, list) or not outputs:
+        raise PermissionError(f"Required Hospital-1 stage has no recorded outputs: {path.stem}")
+    missing_outputs = [output for output in outputs if not Path(output).exists()]
+    if missing_outputs:
+        raise PermissionError(f"Required Hospital-1 stage outputs are missing for {path.stem}: {missing_outputs}")
+    return metadata
+
+
+def verify_final_test_prerequisites(
+    output_root: str | Path,
+    protocol_path: str | Path = "configs/final/FINAL_PROTOCOL.yaml",
+    repository: str | Path = ".",
+) -> dict:
+    """Verify persisted Hospital-1 completion for the current commit and protocol."""
+    root = Path(output_root)
+    protocol_hash = verify_protocol_lock(protocol_path, root / "protocol" / "protocol_sha256.txt")
+    commit, dirty = git_state(repository)
+    if dirty:
+        raise PermissionError("Final test prerequisites require a clean Git working tree")
+    stage_root = root / ".stage_state"
+
+    training = [f"train_resnet50_{seed:04d}" for seed in FINAL_TRAINING_SEEDS]
+    audits = []
+    for seed in FINAL_TRAINING_SEEDS:
+        audits.extend(f"audit_hospital1_{setting}_{seed:04d}" for setting in ("primary", "random_paired", "roi_only"))
+        audits.extend(f"robustness_hospital1_{setting}_{seed:04d}" for setting in ("buffer_r8", "hard_boundary"))
+    for stage in [*training, *audits, "aggregate_hospital1"]:
+        _verify_current_stage_marker(stage_root / f"{stage}.json", commit, protocol_hash)
+
+    completeness_path = root / "aggregate" / "hospital1" / "run_completeness.csv"
+    if not completeness_path.is_file():
+        raise PermissionError("Hospital-1 aggregation is incomplete: run_completeness.csv is missing")
+    with completeness_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    by_setting = {row.get("setting"): row for row in rows if row.get("population") == "hospital1"}
+    missing_settings = set(FINAL_HOSPITAL1_SETTINGS) - set(by_setting)
+    if missing_settings:
+        raise PermissionError(f"Hospital-1 aggregation is missing required settings: {sorted(missing_settings)}")
+    incomplete = []
+    for setting in FINAL_HOSPITAL1_SETTINGS:
+        row = by_setting[setting]
+        try:
+            expected = int(row["expected_runs"])
+            completed = int(row["completed_runs"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise PermissionError(f"Hospital-1 completeness row is invalid for {setting}") from error
+        if expected != len(FINAL_TRAINING_SEEDS) or completed != expected or row.get("status") != "complete":
+            incomplete.append(setting)
+    if incomplete:
+        raise PermissionError(f"Hospital-1 aggregation is incomplete for settings: {incomplete}")
+    return {"protocol_hash": protocol_hash, "git_commit": commit}
 
 
 def authorize_final_test(output_root: str | Path, protocol_path: str | Path = "configs/final/FINAL_PROTOCOL.yaml") -> dict:

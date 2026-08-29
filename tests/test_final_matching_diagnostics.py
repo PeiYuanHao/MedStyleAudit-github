@@ -1,7 +1,12 @@
 import numpy as np
 import pandas as pd
 
-from medstyleaudit.matching.balance import donor_reuse_summary, feature_balance, slide_reuse_summary
+from medstyleaudit.matching.balance import (
+    donor_reuse_summary,
+    feature_balance,
+    slide_reuse_summary,
+)
+from medstyleaudit.matching.distance import Standardizer
 
 
 def _inputs():
@@ -18,10 +23,40 @@ def _inputs():
 
 def test_feature_balance_reports_every_primary_feature():
     triplets, descriptors = _inputs()
-    result = feature_balance(triplets, descriptors, ["f1", "f2"])
+    training = pd.DataFrame({"f1": [0.0, 4.0], "f2": [0.0, 8.0]})
+    standardizer = Standardizer.fit(training, ["f1", "f2"])
+    result = feature_balance(triplets, descriptors, ["f1", "f2"], standardizer)
     assert set(result["feature"]) == {"f1", "f2"}
     assert result.set_index("feature").loc["f2", "paired_smd"] == 0
     assert np.isfinite(result["paired_smd"]).all()
+
+
+def test_feature_balance_uses_training_bank_scale_not_realized_pooled_sd():
+    triplets, descriptors = _inputs()
+    training = pd.DataFrame({"f1": [-10.0, 10.0]})
+    standardizer = Standardizer.fit(training, ["f1"])
+    result = feature_balance(triplets, descriptors, ["f1"], standardizer).iloc[0]
+    assert result.train_scale == 10.0
+    assert np.isclose(result.paired_mean_difference, 0.1)
+    assert np.isclose(result.paired_smd, 0.01)
+    pooled = np.sqrt((np.var([1.0, 2.0], ddof=1) + np.var([1.1, 2.1], ddof=1)) / 2)
+    assert not np.isclose(result.paired_smd, result.paired_mean_difference / pooled)
+
+
+def test_feature_balance_zero_training_scale_is_explicit():
+    triplets, descriptors = _inputs()
+    standardizer = Standardizer.fit(pd.DataFrame({"f1": [3.0, 3.0]}), ["f1"])
+    unequal = feature_balance(triplets, descriptors, ["f1"], standardizer).iloc[0]
+    assert unequal.train_scale == 0
+    assert np.isnan(unequal.paired_smd)
+    assert unequal.paired_smd_status == "non_estimable_zero_train_scale"
+
+    equal_descriptors = descriptors.copy()
+    equal_descriptors.loc[equal_descriptors["source_id"] == 20, "f1"] = 1.0
+    equal_descriptors.loc[equal_descriptors["source_id"] == 21, "f1"] = 2.0
+    equal = feature_balance(triplets, equal_descriptors, ["f1"], standardizer).iloc[0]
+    assert equal.paired_smd == 0
+    assert equal.paired_smd_status == "zero_train_scale_equal_values"
 
 
 def test_donor_reuse_includes_detail_and_required_quantiles():

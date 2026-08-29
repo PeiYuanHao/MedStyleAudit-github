@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .distance import Standardizer
+
 
 def balance_summary(triplets: pd.DataFrame) -> pd.DataFrame:
     rows = []
@@ -23,23 +25,33 @@ def balance_summary(triplets: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _paired_smd(within: np.ndarray, cross: np.ndarray) -> tuple[float, float]:
+def _paired_smd(within: np.ndarray, cross: np.ndarray, train_scale: float) -> tuple[float, float, str]:
     differences = cross - within
-    pooled = np.sqrt((np.var(within, ddof=1) + np.var(cross, ddof=1)) / 2) if len(within) > 1 else 0.0
     mean_difference = float(np.mean(differences))
-    if pooled > 0:
-        return mean_difference, mean_difference / float(pooled)
-    return mean_difference, 0.0 if np.allclose(within, cross) else float("nan")
+    if train_scale > 0:
+        return mean_difference, mean_difference / train_scale, "estimable"
+    if np.array_equal(within, cross):
+        return mean_difference, 0.0, "zero_train_scale_equal_values"
+    return mean_difference, float("nan"), "non_estimable_zero_train_scale"
 
 
-def feature_balance(triplets: pd.DataFrame, descriptors: pd.DataFrame, features: list[str]) -> pd.DataFrame:
-    """Report prespecified descriptor balance for every directed source/target pair."""
+def feature_balance(
+    triplets: pd.DataFrame,
+    descriptors: pd.DataFrame,
+    features: list[str],
+    standardizer: Standardizer,
+) -> pd.DataFrame:
+    """Report manuscript pSMD using the fixed training-donor-bank feature scale."""
     missing = (set(features) | {"source_id"}) - set(descriptors.columns)
     if missing:
         raise KeyError(f"Descriptor columns are missing: {sorted(missing)}")
     required = {"source_split", "source_hospital", "target_hospital", "within_donor", "cross_donor"}
     if required - set(triplets.columns):
         raise KeyError(f"Triplet columns are missing: {sorted(required - set(triplets.columns))}")
+    scale_by_feature = dict(zip(standardizer.columns, standardizer.scale, strict=True))
+    missing_scales = set(features) - set(scale_by_feature)
+    if missing_scales:
+        raise KeyError(f"Training-bank scales are missing: {sorted(missing_scales)}")
     lookup = descriptors.drop_duplicates("source_id").set_index("source_id")
     rows = []
     for keys, group in triplets.groupby(["source_split", "source_hospital", "target_hospital"], sort=True):
@@ -48,13 +60,14 @@ def feature_balance(triplets: pd.DataFrame, descriptors: pd.DataFrame, features:
             cross = lookup.loc[group["cross_donor"], feature].to_numpy(dtype=float)
             if not np.isfinite(within).all() or not np.isfinite(cross).all():
                 raise ValueError(f"Non-finite descriptor values for {feature} in directed pair {keys}")
-            difference, smd = _paired_smd(within, cross)
+            train_scale = float(scale_by_feature[feature])
+            difference, smd, status = _paired_smd(within, cross, train_scale)
             rows.append({
                 "source_split": keys[0], "source_hospital": int(keys[1]), "target_hospital": int(keys[2]),
                 "feature": feature, "n_pairs": len(group), "within_mean": float(np.mean(within)),
                 "cross_mean": float(np.mean(cross)), "within_median": float(np.median(within)),
                 "cross_median": float(np.median(cross)), "paired_mean_difference": difference,
-                "paired_smd": smd,
+                "train_scale": train_scale, "paired_smd": smd, "paired_smd_status": status,
             })
     return pd.DataFrame(rows)
 
@@ -112,7 +125,7 @@ def slide_reuse_summary(triplets: pd.DataFrame, descriptors: pd.DataFrame) -> pd
         shares = uses / uses.sum()
         summaries.append({
             "row_type": "summary", "source_split": pair[0], "source_hospital": pair[1], "target_hospital": pair[2],
-            "unique_donor_slides": int(len(group)), "effective_donor_slide_count": float(1.0 / np.sum(shares ** 2)),
+            "unique_donor_slides": len(group), "effective_donor_slide_count": float(1.0 / np.sum(shares ** 2)),
             "maximum_slide_share": float(np.max(shares)), "total_donor_uses": int(uses.sum()),
         })
     return pd.concat([detail, pd.DataFrame(summaries)], ignore_index=True, sort=False)
@@ -151,7 +164,7 @@ def donor_reuse_distribution(triplets: pd.DataFrame, descriptors: pd.DataFrame) 
     values = detail["total_uses"].to_numpy(dtype=float)
     empty = float("nan") if not len(values) else None
     return pd.DataFrame([{
-        "n_unique_donors": int(len(detail)),
+        "n_unique_donors": len(detail),
         "median": empty if empty is not None else float(np.median(values)),
         "p90": empty if empty is not None else float(np.quantile(values, 0.90)),
         "p95": empty if empty is not None else float(np.quantile(values, 0.95)),
@@ -190,7 +203,7 @@ def slide_reuse_distribution(triplets: pd.DataFrame, descriptors: pd.DataFrame) 
     values = detail["total_uses"].to_numpy(dtype=float)
     empty = float("nan") if not len(values) else None
     return pd.DataFrame([{
-        "n_unique_slides": int(len(detail)),
+        "n_unique_slides": len(detail),
         "median": empty if empty is not None else float(np.median(values)),
         "p90": empty if empty is not None else float(np.quantile(values, 0.90)),
         "p95": empty if empty is not None else float(np.quantile(values, 0.95)),
