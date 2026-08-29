@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -119,7 +121,7 @@ def test_hospital1_success_runs_full_hf_upload_and_verify(tmp_path):
 def test_hospital2_success_reuses_current_suite_verification(tmp_path):
     module = _module()
     output = _output(tmp_path)
-    started_at = module.utc_now()
+    started_at = (datetime.now(timezone.utc) - timedelta(seconds=2)).isoformat()
     (output / ".hf_verified").write_text(module.utc_now(), encoding="utf-8")
     commands = FakeCommands()
     github_calls = []
@@ -140,6 +142,30 @@ def test_hospital2_success_reuses_current_suite_verification(tmp_path):
     assert commands.called("/usr/bin/shutdown")
     assert status["hf_backup_mode"] == "suite_verified"
     assert status["hf_full_backup_reused_from_suite"] is True
+
+
+def test_hospital2_success_rejects_stale_suite_verification(tmp_path):
+    module = _module()
+    output = _output(tmp_path)
+    started = datetime.now(timezone.utc)
+    stale = started - timedelta(hours=1)
+    marker = output / ".hf_verified"
+    marker.write_text(stale.isoformat(), encoding="utf-8")
+    os.utime(marker, (stale.timestamp(), stale.timestamp()))
+    commands = FakeCommands()
+    status = module.finalize_unattended_run(
+        repo_root=Path(__file__).resolve().parents[1],
+        output_root=output,
+        phase="hospital2",
+        suite_exit_code=0,
+        started_at=started.isoformat(),
+        environment={"HF_TOKEN": "hf-secret"},
+        command_runner=commands,
+        github_pusher=lambda *args: "results/hospital2-stale",
+    )
+    assert any("--root" in command for command in commands.calls)
+    assert commands.called("hf_verify_artifacts.py")
+    assert status["hf_backup_mode"] == "finalizer_full"
 
 
 def test_hospital2_failure_ignores_hf_marker_and_runs_recovery(tmp_path):
