@@ -1,0 +1,54 @@
+Unattended backup preflight: PASS
+Already up to date.
+[run] environment
+[run] protocol_lock
+[run] pytest_command
+[run] data_integrity
+[run] lesion_alignment
+[run] descriptors
+[run] matching
+[run] coverage_gate
+[run] final_preflight
+[run] subset_hospital1
+[run] random_paired_hospital1
+[run] train_resnet50_0011
+[run] train_resnet50_0042
+[run] train_resnet50_0101
+[run] audit_hospital1_primary_0011
+[run] audit_hospital1_random_paired_0011
+Traceback (most recent call last):
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 553, in <module>
+    main()
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 549, in main
+    FinalSuite(args).execute()
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 483, in execute
+    self.parallel(hospital1_jobs)
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 246, in parallel
+    future.result()
+  File "/root/miniconda3/lib/python3.10/concurrent/futures/_base.py", line 458, in result
+    return self.__get_result()
+  File "/root/miniconda3/lib/python3.10/concurrent/futures/_base.py", line 403, in __get_result
+    raise self._exception
+  File "/root/miniconda3/lib/python3.10/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 237, in worker
+    job(device)
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 480, in <lambda>
+    hospital1_jobs.append((lambda device, seed=seed, setting=setting, triplets=setting_triplets: self.primary_audit("hospital1", setting, seed, triplets, device)))
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 347, in primary_audit
+    self.run(f"audit_{population}_{setting}_{seed:04d}", command, outputs, f"{population}_audit")
+  File "/root/MedStyleAudit-github/scripts/run_final_suite.py", line 208, in run
+    raise RuntimeError(f"Stage {name} failed; see {log_path}")
+RuntimeError: Stage audit_hospital1_primary_0011 failed; see /root/autodl-tmp/medstyleaudit-experiments/logs/final_suite/audit_hospital1_primary_0011.log
+Finalizing unattended hospital1 run (suite exit code 1).
+Traceback (most recent call last):
+  File "/root/MedStyleAudit-github/scripts/hf_upload_artifacts.py", line 38, in <module>
+    main()
+  File "/root/MedStyleAudit-github/scripts/hf_upload_artifacts.py", line 30, in main
+    files = directory_files(root)
+  File "/root/MedStyleAudit-github/src/medstyleaudit/artifacts/huggingface.py", line 98, in directory_files
+    pairs.append((path, validate_hf_path(remote)))
+  File "/root/MedStyleAudit-github/src/medstyleaudit/artifacts/manifest.py", line 21, in validate_hf_path
+    raise ValueError(f"Artifact path is outside the frozen repository layout: {path}")
+ValueError: Artifact path is outside the frozen repository layout: subsets/hospital1.parquet
+PASS: verified 0 artifacts

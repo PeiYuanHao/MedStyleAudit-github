@@ -1,0 +1,3 @@
+2026-08-29 19:15:35,872 | INFO | lesion_mapping | lesion_mapping-20260829T111534Z-42 | run initialized
+
+[2026-08-29T11:15:34.169548+00:00] /root/miniconda3/bin/python scripts/01_validate_lesion_mapping.py --config configs/data/camelyon17_hf.yaml --overwrite

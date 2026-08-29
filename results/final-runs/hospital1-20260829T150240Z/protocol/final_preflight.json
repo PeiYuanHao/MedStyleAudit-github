@@ -1,0 +1,127 @@
+{
+  "status": "PASS",
+  "protocol_hash": "ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04",
+  "git_commit": "ea2f91f6821e4bbd2772393c786d3dc109ae769e",
+  "lesion_aware_status": "unavailable",
+  "checks": [
+    {
+      "check": "required_file:descriptors",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/descriptors/descriptors.parquet"
+    },
+    {
+      "check": "required_file:directed_coverage",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/directed_coverage.csv"
+    },
+    {
+      "check": "required_file:common_support_coverage",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/common_support_coverage.csv"
+    },
+    {
+      "check": "required_file:matching_balance",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/matching_balance.csv"
+    },
+    {
+      "check": "required_file:feature_balance",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/feature_balance.csv"
+    },
+    {
+      "check": "required_file:donor_reuse",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/donor_reuse.csv"
+    },
+    {
+      "check": "required_file:donor_reuse_summary",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/donor_reuse_summary.csv"
+    },
+    {
+      "check": "required_file:slide_reuse",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/slide_reuse.csv"
+    },
+    {
+      "check": "required_file:slide_reuse_summary",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/slide_reuse_summary.csv"
+    },
+    {
+      "check": "required_file:source_ledger",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/matching/source_ledger.parquet"
+    },
+    {
+      "check": "required_file:integrity_report",
+      "status": "PASS",
+      "path": "/root/autodl-tmp/medstyleaudit-experiments/p0/data_integrity/integrity_report.json"
+    },
+    {
+      "check": "unit_tests",
+      "status": "PASS"
+    },
+    {
+      "check": "roi_tests",
+      "status": "PASS"
+    },
+    {
+      "check": "dataset_files",
+      "status": "PASS",
+      "missing": []
+    },
+    {
+      "check": "metadata_integrity",
+      "status": "PASS",
+      "reported_status": "PASS"
+    },
+    {
+      "check": "finite_descriptors",
+      "status": "PASS",
+      "rows": 455954
+    },
+    {
+      "check": "directed_coverage",
+      "status": "PASS",
+      "observed": 0.974358239743296
+    },
+    {
+      "check": "expected_hospital_pairs",
+      "status": "PASS",
+      "missing": [],
+      "unexpected": []
+    },
+    {
+      "check": "common_support_coverage",
+      "status": "PASS",
+      "observed": 0.9725819390327756
+    },
+    {
+      "check": "aggregate_matching_smd",
+      "status": "PASS",
+      "observed": 0.03601822473822289
+    },
+    {
+      "check": "per_feature_balance",
+      "status": "PASS",
+      "observed": 0.0187014079079912
+    },
+    {
+      "check": "donor_reuse_cap",
+      "status": "PASS",
+      "observed": 20
+    },
+    {
+      "check": "protocol_hash",
+      "status": "PASS",
+      "value": "ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04"
+    },
+    {
+      "check": "git_clean",
+      "status": "PASS",
+      "git_commit": "ea2f91f6821e4bbd2772393c786d3dc109ae769e"
+    }
+  ]
+}

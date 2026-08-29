@@ -1,0 +1,120 @@
+{
+  "created_at": "2026-08-29T15:02:40.256378+00:00",
+  "source_root": "/root/autodl-tmp/medstyleaudit-experiments",
+  "max_file_bytes": 10485760,
+  "copied": [
+    {
+      "path": "logs/final_suite/audit_hospital1_primary_0011.log",
+      "bytes": 468122
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_random_paired_0011.log",
+      "bytes": 469868
+    },
+    {
+      "path": "logs/final_suite/autodl_wrapper.log",
+      "bytes": 2907
+    },
+    {
+      "path": "logs/final_suite/coverage_gate.log",
+      "bytes": 223
+    },
+    {
+      "path": "logs/final_suite/data_integrity.log",
+      "bytes": 168170
+    },
+    {
+      "path": "logs/final_suite/descriptors.log",
+      "bytes": 3166829
+    },
+    {
+      "path": "logs/final_suite/environment.log",
+      "bytes": 176
+    },
+    {
+      "path": "logs/final_suite/final_preflight.log",
+      "bytes": 189
+    },
+    {
+      "path": "logs/final_suite/lesion_alignment.log",
+      "bytes": 258
+    },
+    {
+      "path": "logs/final_suite/matching.log",
+      "bytes": 1504348
+    },
+    {
+      "path": "logs/final_suite/protocol_lock.log",
+      "bytes": 160
+    },
+    {
+      "path": "logs/final_suite/pytest_command.log",
+      "bytes": 237
+    },
+    {
+      "path": "logs/final_suite/random_paired_hospital1.log",
+      "bytes": 392
+    },
+    {
+      "path": "logs/final_suite/subset_hospital1.log",
+      "bytes": 428
+    },
+    {
+      "path": "logs/final_suite/train_resnet50_0011.log",
+      "bytes": 1885858
+    },
+    {
+      "path": "logs/final_suite/train_resnet50_0042.log",
+      "bytes": 1768423
+    },
+    {
+      "path": "logs/final_suite/train_resnet50_0101.log",
+      "bytes": 1893301
+    },
+    {
+      "path": "p0/matching/common_support_coverage.csv",
+      "bytes": 110
+    },
+    {
+      "path": "p0/matching/directed_coverage.csv",
+      "bytes": 206
+    },
+    {
+      "path": "p0/matching/donor_reuse_summary.csv",
+      "bytes": 70
+    },
+    {
+      "path": "p0/matching/feature_balance.csv",
+      "bytes": 9449
+    },
+    {
+      "path": "p0/matching/matching_balance.csv",
+      "bytes": 625
+    },
+    {
+      "path": "p0/matching/slide_reuse_summary.csv",
+      "bytes": 132
+    },
+    {
+      "path": "protocol/FINAL_PROTOCOL.yaml",
+      "bytes": 3025
+    },
+    {
+      "path": "protocol/autodl_final_status.json",
+      "bytes": 586
+    },
+    {
+      "path": "protocol/final_preflight.json",
+      "bytes": 3560
+    },
+    {
+      "path": "protocol/git_commit.txt",
+      "bytes": 41
+    },
+    {
+      "path": "protocol/protocol_sha256.txt",
+      "bytes": 65
+    }
+  ],
+  "skipped": []
+}
