@@ -1,0 +1,6 @@
+Random Paired triplets: 90000 rows from 10000 subset sources
+
+[2026-08-29T13:10:14.994296+00:00] /root/miniconda3/bin/python scripts/03_random_paired.py --config configs/matching/primary.yaml --subset /root/autodl-tmp/medstyleaudit-experiments/subsets/hospital1.parquet --split val --seed 42 --output /root/autodl-tmp/medstyleaudit-experiments/audits/hospital1/random_paired/triplets.parquet
+Random Paired triplets: 90000 rows from 10000 subset sources
+
+[2026-08-30T03:39:29.896065+00:00] /root/miniconda3/bin/python scripts/03_random_paired.py --config configs/matching/primary.yaml --subset /root/autodl-tmp/medstyleaudit-experiments/subsets/hospital1.parquet --split val --seed 42 --output /root/autodl-tmp/medstyleaudit-experiments/audits/hospital1/random_paired/triplets.parquet

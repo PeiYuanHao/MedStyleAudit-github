@@ -1,0 +1,156 @@
+protocol_version: 1.1.0
+status: frozen
+paper_title: Auditing Hospital-Associated Context Sensitivity with a Pixel-Identical
+  Label-Defining Region
+experiment:
+  architecture: resnet50
+  seeds:
+  - 11
+  - 42
+  - 101
+data:
+  training_hospitals:
+  - 0
+  - 3
+  - 4
+  ood_validation_hospital: 1
+  final_test_hospital: 2
+  held_out_cross_donor_bank:
+  - 0
+  - 3
+  - 4
+scientific_definitions:
+  patch_size: 96
+  roi_size: 32
+  roi_location: central
+  roi_preservation: exact_pixel_identity
+  hcs: excess_absolute_normalized_logit_instability_cross_minus_within
+  hce: signed_normalized_logit_shift_cross_minus_within
+  global_summaries:
+  - common_support
+  - pair_weighted
+  interpretation: sensitivity_contrast_not_causal_scanner_stain_identification
+audit:
+  patch_size: 96
+  roi_size: 32
+  audit_sample_size: 10000
+  audit_sampling_seed: 2026
+  primary_source_buffer: 0
+  robustness_source_buffer: 8
+  primary_boundary: feathered
+  robustness_boundary: hard
+  feather_width: 4
+  inference_batch_size: 64
+  validation_source_hospital: 1
+  final_test_source_hospital: 2
+  held_out_within_donors: same_held_out_hospital
+  held_out_cross_donor_bank:
+  - 0
+  - 3
+  - 4
+  expected_directed_pairs:
+    val:
+    - - 1
+      - 0
+    - - 1
+      - 3
+    - - 1
+      - 4
+    test:
+    - - 2
+      - 0
+    - - 2
+      - 3
+    - - 2
+      - 4
+  bootstrap_draws: 2000
+  confidence: 0.95
+matching:
+  method: balanced_triplets
+  donors_per_source: 3
+  lambda_balance: 2.0
+  lambda_pair: 0.25
+  tau_distance: 6.0
+  tau_balance: 1.0
+  candidate_pool_size: 64
+  donor_reuse_cap: 20
+  donor_slide_reuse_cap: 200000
+  min_donor_slide_diversity: 1
+  descriptor_features:
+  - tissue_fraction
+  - component_count
+  - area_mean
+  - area_std
+  - area_max
+  - normalized_perimeter
+  - compactness
+  - eccentricity
+  - centroid_x
+  - centroid_y
+  - grid_0
+  - grid_1
+  - grid_2
+  - grid_3
+  - grid_4
+  - grid_5
+  - grid_6
+  - grid_7
+  - grid_8
+  - empty_mask
+  exact_columns:
+  - label
+  classifier_outcome_tuning: prohibited
+statistics:
+  q_min: 0.001
+  bootstrap_draws: 2000
+  confidence_level: 0.95
+models:
+  backbones:
+  - resnet50
+  initialization: random
+  pretrained_weights: prohibited
+  seeds:
+  - 11
+  - 42
+  - 101
+  loss: BCEWithLogitsLoss
+  optimizer: AdamW
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  scheduler: cosine
+  selection: validation
+  epochs: 20
+  batch_size: 128
+model:
+  architecture: resnet50
+  initialization: random
+  pretrained_weights: prohibited
+  loss: BCEWithLogitsLoss
+  optimizer: adamw
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  scheduler: cosine
+  epochs: 20
+  batch_size: 128
+  model_selection: validation
+  selection_metric: val_auroc
+controls:
+  roi_only: required
+robustness:
+  source_buffer:
+    values:
+    - 0
+    - 8
+    rematching: prohibited
+  seam:
+  - hard
+  - feathered
+  lesion_aware: conditional_on_validated_alignment
+final_test:
+  source_hospital: 2
+  requires:
+  - protocol_hash
+  - clean_git_commit
+  - final_preflight_PASS
+  - explicit_unlock
+  protocol_overrides_after_open: prohibited

@@ -1,0 +1,6 @@
+population,setting,backbone,expected_runs,completed_runs,missing_runs,status
+hospital1,primary,resnet50,3,3,[],complete
+hospital1,random_paired,resnet50,3,3,[],complete
+hospital1,roi_only,resnet50,3,3,[],complete
+hospital1,buffer_r8,resnet50,3,3,[],complete
+hospital1,hard_boundary,resnet50,3,3,[],complete

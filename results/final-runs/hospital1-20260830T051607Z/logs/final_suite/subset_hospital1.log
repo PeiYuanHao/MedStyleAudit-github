@@ -1,0 +1,6 @@
+Audit subset: 10000 selected from 34274 matched eligible sources
+
+[2026-08-29T13:10:14.022917+00:00] /root/miniconda3/bin/python scripts/04_build_audit_subset.py --triplets /root/autodl-tmp/medstyleaudit-experiments/p0/matching/triplets.parquet --split val --output /root/autodl-tmp/medstyleaudit-experiments/subsets/hospital1.parquet --triplets-out /root/autodl-tmp/medstyleaudit-experiments/subsets/hospital1_triplets.parquet
+Audit subset: 10000 selected from 34274 matched eligible sources
+
+[2026-08-30T03:39:28.916115+00:00] /root/miniconda3/bin/python scripts/04_build_audit_subset.py --triplets /root/autodl-tmp/medstyleaudit-experiments/p0/matching/triplets.parquet --split val --output /root/autodl-tmp/medstyleaudit-experiments/subsets/hospital1.parquet --triplets-out /root/autodl-tmp/medstyleaudit-experiments/subsets/hospital1_triplets.parquet

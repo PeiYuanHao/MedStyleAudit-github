@@ -1,0 +1,17 @@
+{
+  "status": "success",
+  "suite_exit_code": 0,
+  "phase": "hospital1",
+  "git_commit": "feede087cae4e0f2ae896cfa7c0cffcdc9030608",
+  "protocol_sha256": "ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04",
+  "started_at": "2026-08-30T03:35:46Z",
+  "finished_at": "2026-08-30T05:16:07.449277+00:00",
+  "hf_upload_attempted": true,
+  "hf_upload_succeeded": false,
+  "hf_verification_succeeded": true,
+  "github_export_attempted": true,
+  "github_export_succeeded": true,
+  "github_result_branch": null,
+  "shutdown_attempted": false,
+  "hf_backup_mode": "finalizer_full"
+}

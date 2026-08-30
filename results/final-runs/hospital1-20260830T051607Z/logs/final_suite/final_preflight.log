@@ -1,0 +1,6 @@
+Final preflight PASS: /root/autodl-tmp/medstyleaudit-experiments/protocol/final_preflight.json
+
+[2026-08-29T13:10:13.306808+00:00] /root/miniconda3/bin/python scripts/14_final_preflight.py
+Final preflight PASS: /root/autodl-tmp/medstyleaudit-experiments/protocol/final_preflight.json
+
+[2026-08-30T03:39:28.217863+00:00] /root/miniconda3/bin/python scripts/14_final_preflight.py

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 1,
+  "artifact_count": 1,
+  "artifacts": [
+    {
+      "local_path": "/root/autodl-tmp/medstyleaudit-experiments/protocol/autodl_final_status.json",
+      "hf_path": "protocol/autodl_final_status.json",
+      "sha256": "49f4c1aa16191d5dc2821f220b38432e5597447f9657d1df7500db07c11d71f0",
+      "bytes": 618,
+      "experiment": "protocol",
+      "backbone": null,
+      "seed": null,
+      "split": null,
+      "git_commit": "ea2f91f6821e4bbd2772393c786d3dc109ae769e",
+      "protocol_hash": "ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04"
+    }
+  ]
+}

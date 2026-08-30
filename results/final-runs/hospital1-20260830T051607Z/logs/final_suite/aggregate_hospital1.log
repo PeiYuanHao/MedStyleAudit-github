@@ -1,0 +1,3 @@
+2026-08-30 13:16:04,248 | INFO | aggregate_final_suite | aggregate_final_suite-20260830T051602Z-42 | run initialized
+
+[2026-08-30T05:16:02.538052+00:00] /root/miniconda3/bin/python scripts/12_aggregate_experiments.py --population hospital1 --overwrite

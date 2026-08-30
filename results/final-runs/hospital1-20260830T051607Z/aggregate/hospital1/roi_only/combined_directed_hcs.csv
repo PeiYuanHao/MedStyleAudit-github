@@ -1,0 +1,10 @@
+source_split,seed,backbone,source_hospital,target_hospital,n_sources,delta_within,delta_cross,hcs,number_expected_runs,number_completed_runs,missing_runs_detail,status,protocol_hash,git_commit
+val,11,resnet50,1,0,9980,0.0,0.0,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,11,resnet50,1,3,9929,0.0,0.0,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,11,resnet50,1,4,9973,2.1623387614950153e-09,2.1623387614950153e-09,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,42,resnet50,1,0,9980,0.0,0.0,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,42,resnet50,1,3,9929,0.0,0.0,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,42,resnet50,1,4,9973,2.8824620744606566e-09,2.8824620744606566e-09,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,101,resnet50,1,0,9980,0.0,0.0,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,101,resnet50,1,3,9929,0.0,0.0,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,101,resnet50,1,4,9973,6.126192204905905e-10,6.126192204905905e-10,0.0,3,3,[],complete,ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608

@@ -1,0 +1,7 @@
+source_split,seed,backbone,status,hce_pair_weighted,n_pairs,expected_pairs,missing_pairs,unexpected_pairs,summary_type,n_unique_sources,hce_common_support,number_expected_runs,number_completed_runs,missing_runs_detail,protocol_hash,git_commit
+val,11,resnet50,complete,0.0,3.0,"[(1, 0), (1, 3), (1, 4)]",[],[],pair_weighted,,,3,3,[],ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,42,resnet50,complete,0.0,3.0,"[(1, 0), (1, 3), (1, 4)]",[],[],pair_weighted,,,3,3,[],ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,101,resnet50,complete,0.0,3.0,"[(1, 0), (1, 3), (1, 4)]",[],[],pair_weighted,,,3,3,[],ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,11,resnet50,complete,,,,,,common_support,9909.0,0.0,3,3,[],ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,42,resnet50,complete,,,,,,common_support,9909.0,0.0,3,3,[],ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608
+val,101,resnet50,complete,,,,,,common_support,9909.0,0.0,3,3,[],ab44aaa68bdd7a9e871f3edb1e9a6b959a61068c2b18786588d37e44da2d2b04,feede087cae4e0f2ae896cfa7c0cffcdc9030608

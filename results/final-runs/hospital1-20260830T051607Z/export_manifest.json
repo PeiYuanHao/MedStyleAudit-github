@@ -1,0 +1,392 @@
+{
+  "created_at": "2026-08-30T05:16:07.507124+00:00",
+  "source_root": "/root/autodl-tmp/medstyleaudit-experiments",
+  "max_file_bytes": 10485760,
+  "copied": [
+    {
+      "path": "MANIFEST.json",
+      "bytes": 594
+    },
+    {
+      "path": "aggregate/hospital1/INDIVIDUAL_SEEDS.csv",
+      "bytes": 12938
+    },
+    {
+      "path": "aggregate/hospital1/config_resolved.yaml",
+      "bytes": 793
+    },
+    {
+      "path": "aggregate/hospital1/directed_intervals.csv",
+      "bytes": 16230
+    },
+    {
+      "path": "aggregate/hospital1/global_hce.csv",
+      "bytes": 4093
+    },
+    {
+      "path": "aggregate/hospital1/global_hcs.csv",
+      "bytes": 4509
+    },
+    {
+      "path": "aggregate/hospital1/global_intervals.csv",
+      "bytes": 11345
+    },
+    {
+      "path": "aggregate/hospital1/matching_results.csv",
+      "bytes": 19400
+    },
+    {
+      "path": "aggregate/hospital1/primary/combined_coverage.csv",
+      "bytes": 887
+    },
+    {
+      "path": "aggregate/hospital1/primary/combined_directed_hce.csv",
+      "bytes": 2055
+    },
+    {
+      "path": "aggregate/hospital1/primary/combined_directed_hcs.csv",
+      "bytes": 2041
+    },
+    {
+      "path": "aggregate/hospital1/primary/combined_directed_intervals.csv",
+      "bytes": 5565
+    },
+    {
+      "path": "aggregate/hospital1/primary/combined_global_hce.csv",
+      "bytes": 1425
+    },
+    {
+      "path": "aggregate/hospital1/primary/combined_global_hcs.csv",
+      "bytes": 1577
+    },
+    {
+      "path": "aggregate/hospital1/primary/combined_global_intervals.csv",
+      "bytes": 3928
+    },
+    {
+      "path": "aggregate/hospital1/primary/coverage.csv",
+      "bytes": 887
+    },
+    {
+      "path": "aggregate/hospital1/primary/directed_hce.csv",
+      "bytes": 2055
+    },
+    {
+      "path": "aggregate/hospital1/primary/directed_hcs.csv",
+      "bytes": 2041
+    },
+    {
+      "path": "aggregate/hospital1/primary/global_hce.csv",
+      "bytes": 1425
+    },
+    {
+      "path": "aggregate/hospital1/primary/global_hcs.csv",
+      "bytes": 1577
+    },
+    {
+      "path": "aggregate/hospital1/primary/missing_runs.csv",
+      "bytes": 261
+    },
+    {
+      "path": "aggregate/hospital1/primary/seed_stability.csv",
+      "bytes": 1612
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/combined_coverage.csv",
+      "bytes": 887
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/combined_directed_hce.csv",
+      "bytes": 2051
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/combined_directed_hcs.csv",
+      "bytes": 2045
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/combined_directed_intervals.csv",
+      "bytes": 5568
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/combined_global_hce.csv",
+      "bytes": 1432
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/combined_global_hcs.csv",
+      "bytes": 1581
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/combined_global_intervals.csv",
+      "bytes": 3932
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/coverage.csv",
+      "bytes": 887
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/directed_hce.csv",
+      "bytes": 2051
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/directed_hcs.csv",
+      "bytes": 2045
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/global_hce.csv",
+      "bytes": 1432
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/global_hcs.csv",
+      "bytes": 1581
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/missing_runs.csv",
+      "bytes": 261
+    },
+    {
+      "path": "aggregate/hospital1/random_paired/seed_stability.csv",
+      "bytes": 1603
+    },
+    {
+      "path": "aggregate/hospital1/robustness_by_seed.csv",
+      "bytes": 2602
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/combined_coverage.csv",
+      "bytes": 887
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/combined_directed_hce.csv",
+      "bytes": 1983
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/combined_directed_hcs.csv",
+      "bytes": 1739
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/combined_directed_intervals.csv",
+      "bytes": 4456
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/combined_global_hce.csv",
+      "bytes": 1337
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/combined_global_hcs.csv",
+      "bytes": 1502
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/combined_global_intervals.csv",
+      "bytes": 3190
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/coverage.csv",
+      "bytes": 887
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/directed_hce.csv",
+      "bytes": 1983
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/directed_hcs.csv",
+      "bytes": 1739
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/global_hce.csv",
+      "bytes": 1337
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/global_hcs.csv",
+      "bytes": 1502
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/missing_runs.csv",
+      "bytes": 261
+    },
+    {
+      "path": "aggregate/hospital1/roi_only/seed_stability.csv",
+      "bytes": 1228
+    },
+    {
+      "path": "aggregate/hospital1/run.log",
+      "bytes": 117
+    },
+    {
+      "path": "aggregate/hospital1/run_completeness.csv",
+      "bytes": 307
+    },
+    {
+      "path": "aggregate/hospital1/run_info.json",
+      "bytes": 1065
+    },
+    {
+      "path": "logs/final_suite/aggregate_hospital1.log",
+      "bytes": 252
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_primary_0011.log",
+      "bytes": 934987
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_primary_0042.log",
+      "bytes": 464463
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_primary_0101.log",
+      "bytes": 463755
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_random_paired_0011.log",
+      "bytes": 941542
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_random_paired_0042.log",
+      "bytes": 468087
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_random_paired_0101.log",
+      "bytes": 464560
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_roi_only_0011.log",
+      "bytes": 469058
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_roi_only_0042.log",
+      "bytes": 469208
+    },
+    {
+      "path": "logs/final_suite/audit_hospital1_roi_only_0101.log",
+      "bytes": 464831
+    },
+    {
+      "path": "logs/final_suite/autodl_wrapper.log",
+      "bytes": 4895
+    },
+    {
+      "path": "logs/final_suite/coverage_gate.log",
+      "bytes": 446
+    },
+    {
+      "path": "logs/final_suite/data_integrity.log",
+      "bytes": 333689
+    },
+    {
+      "path": "logs/final_suite/descriptors.log",
+      "bytes": 3166829
+    },
+    {
+      "path": "logs/final_suite/environment.log",
+      "bytes": 352
+    },
+    {
+      "path": "logs/final_suite/final_preflight.log",
+      "bytes": 378
+    },
+    {
+      "path": "logs/final_suite/lesion_alignment.log",
+      "bytes": 516
+    },
+    {
+      "path": "logs/final_suite/matching.log",
+      "bytes": 1504348
+    },
+    {
+      "path": "logs/final_suite/protocol_lock.log",
+      "bytes": 320
+    },
+    {
+      "path": "logs/final_suite/pytest_command.log",
+      "bytes": 628
+    },
+    {
+      "path": "logs/final_suite/random_paired_hospital1.log",
+      "bytes": 784
+    },
+    {
+      "path": "logs/final_suite/robustness_hospital1_buffer_r8_0011.log",
+      "bytes": 465784
+    },
+    {
+      "path": "logs/final_suite/robustness_hospital1_buffer_r8_0042.log",
+      "bytes": 465922
+    },
+    {
+      "path": "logs/final_suite/robustness_hospital1_buffer_r8_0101.log",
+      "bytes": 459199
+    },
+    {
+      "path": "logs/final_suite/robustness_hospital1_hard_boundary_0011.log",
+      "bytes": 427617
+    },
+    {
+      "path": "logs/final_suite/robustness_hospital1_hard_boundary_0042.log",
+      "bytes": 427524
+    },
+    {
+      "path": "logs/final_suite/robustness_hospital1_hard_boundary_0101.log",
+      "bytes": 427976
+    },
+    {
+      "path": "logs/final_suite/subset_hospital1.log",
+      "bytes": 856
+    },
+    {
+      "path": "logs/final_suite/train_resnet50_0011.log",
+      "bytes": 1885858
+    },
+    {
+      "path": "logs/final_suite/train_resnet50_0042.log",
+      "bytes": 1768423
+    },
+    {
+      "path": "logs/final_suite/train_resnet50_0101.log",
+      "bytes": 1893301
+    },
+    {
+      "path": "p0/matching/common_support_coverage.csv",
+      "bytes": 110
+    },
+    {
+      "path": "p0/matching/directed_coverage.csv",
+      "bytes": 206
+    },
+    {
+      "path": "p0/matching/donor_reuse_summary.csv",
+      "bytes": 70
+    },
+    {
+      "path": "p0/matching/feature_balance.csv",
+      "bytes": 9449
+    },
+    {
+      "path": "p0/matching/matching_balance.csv",
+      "bytes": 625
+    },
+    {
+      "path": "p0/matching/slide_reuse_summary.csv",
+      "bytes": 132
+    },
+    {
+      "path": "protocol/FINAL_PROTOCOL.yaml",
+      "bytes": 3025
+    },
+    {
+      "path": "protocol/autodl_final_status.json",
+      "bytes": 587
+    },
+    {
+      "path": "protocol/final_preflight.json",
+      "bytes": 3560
+    },
+    {
+      "path": "protocol/git_commit.txt",
+      "bytes": 41
+    },
+    {
+      "path": "protocol/protocol_sha256.txt",
+      "bytes": 65
+    }
+  ],
+  "skipped": []
+}

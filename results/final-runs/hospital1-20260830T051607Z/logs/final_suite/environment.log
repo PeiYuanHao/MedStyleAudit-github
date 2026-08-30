@@ -1,0 +1,6 @@
+NVIDIA GeForce RTX 4090
+
+[2026-08-29T11:11:59.323247+00:00] /root/miniconda3/bin/python -c import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))
+NVIDIA GeForce RTX 4090
+
+[2026-08-30T03:35:51.208960+00:00] /root/miniconda3/bin/python -c import torch; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))
